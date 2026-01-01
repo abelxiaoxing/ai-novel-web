@@ -35,7 +35,7 @@
       </label>
       <div class="action-row">
         <button class="btn btn-primary" @click="$emit('run', 'architecture')">生成架构</button>
-        <button class="btn btn-ghost" @click="$emit('run', 'blueprint')">生成目录</button>
+        <button class="btn btn-ghost" @click="$emit('run', 'blueprint')">生成章节蓝图</button>
       </div>
     </div>
     <div class="section">
@@ -158,7 +158,7 @@ const handleFile = (event: Event) => {
   grid-row: 2 / 4;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .section {

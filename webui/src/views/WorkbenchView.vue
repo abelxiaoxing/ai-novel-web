@@ -545,7 +545,7 @@ const runAction = async (action: string) => {
       );
       break;
     case "blueprint":
-      await runTask("生成目录", () =>
+      await runTask("生成章节蓝图", () =>
         generateBlueprint(projectId, {
           number_of_chapters: Number(form.numberOfChapters),
           user_guidance: form.userGuidance,
