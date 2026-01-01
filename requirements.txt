@@ -16,8 +16,6 @@ chromadb==1.0.20
 click==8.2.1
 colorama==0.4.6
 coloredlogs==15.0.1
-customtkinter==5.2.2
-darkdetect==0.8.0
 dataclasses-json==0.6.7
 distro==1.9.0
 durationpy==0.10
@@ -136,6 +134,8 @@ typing-inspection==0.4.1
 typing_extensions==4.15.0
 uritemplate==4.2.0
 urllib3==2.6.0
+fastapi==0.115.0
+python-multipart==0.0.9
 uvicorn==0.35.0
 watchfiles==1.1.0
 websocket-client==1.8.0

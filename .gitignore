@@ -19,3 +19,9 @@ test.py
 uv.lock
 .python-version
 pyproject.toml
+node_modules
+webui/dist
+webui/node_modules
+webui/.vite
+webui/.env
+webui/.env.local

@@ -48,7 +48,48 @@ def debug_log(prompt: str, response_content: str):
         f"\n[######################################### Response #########################################]\n{response_content}\n"
     )
 
-def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 3) -> str:
+def _is_retryable_error(error: Exception) -> bool:
+    message = str(error).lower()
+    non_retry_signals = [
+        "invalid api key",
+        "incorrect api key",
+        "unauthorized",
+        "authentication",
+        "permission",
+        "forbidden",
+        "not found",
+        "bad request",
+        "model not found",
+        "404",
+        "403",
+        "401",
+        "400",
+    ]
+    if any(signal in message for signal in non_retry_signals):
+        return False
+
+    retry_signals = [
+        "timeout",
+        "timed out",
+        "rate limit",
+        "429",
+        "502",
+        "503",
+        "504",
+        "gateway",
+        "connection",
+        "temporarily",
+        "server error",
+        "internal server",
+    ]
+    return any(signal in message for signal in retry_signals) or not message
+
+
+def _retry_backoff_seconds(attempt: int, base: float = 2.0, max_sleep: float = 30.0) -> float:
+    return min(max_sleep, base * (2 ** (attempt - 1)))
+
+
+def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 5) -> str:
     """调用 LLM 并清理返回结果"""
     print("\n" + "="*50)
     print("发送到 LLM 的提示词:")
@@ -58,7 +99,7 @@ def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 3) -> str:
     
     result = ""
     retry_count = 0
-    
+
     while retry_count < max_retries:
         try:
             result = llm_adapter.invoke(prompt)
@@ -67,17 +108,30 @@ def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 3) -> str:
             print("-"*50)
             print(result)
             print("="*50 + "\n")
-            
+
             # 清理结果中的特殊格式标记
             result = result.replace("```", "").strip()
             if result:
                 return result
-            retry_count += 1
-        except Exception as e:
-            print(f"调用失败 ({retry_count + 1}/{max_retries}): {str(e)}")
-            retry_count += 1
-            if retry_count >= max_retries:
-                raise e
-    
-    return result
 
+            retry_count += 1
+            if retry_count < max_retries:
+                sleep_seconds = _retry_backoff_seconds(retry_count)
+                logging.warning(
+                    "Empty LLM response, retrying (%s/%s) after %.1fs.",
+                    retry_count,
+                    max_retries,
+                    sleep_seconds,
+                )
+                time.sleep(sleep_seconds)
+        except Exception as e:
+            retry_count += 1
+            logging.warning("LLM invoke failed (%s/%s): %s", retry_count, max_retries, e)
+            print(f"调用失败 ({retry_count}/{max_retries}): {str(e)}")
+            if retry_count >= max_retries or not _is_retryable_error(e):
+                raise
+            sleep_seconds = _retry_backoff_seconds(retry_count)
+            print(f"将在 {sleep_seconds:.1f} 秒后重试...")
+            time.sleep(sleep_seconds)
+
+    return result

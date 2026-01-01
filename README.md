@@ -14,7 +14,7 @@
 | 🔍 语义检索引擎    | 基于向量的长程上下文一致性维护      |
 | 📚 知识库集成      | 支持本地文档参考         |
 | ✅ 自动审校机制    | 检测剧情矛盾与逻辑冲突          |
-| 🖥 可视化工作台    | 全流程GUI操作，配置/生成/审校一体化 |
+| 🖥 可视化工作台    | 全流程 Web 操作，配置/生成/审校一体化 |
 
 </div>
 
@@ -63,9 +63,21 @@
      ```bash
      pip install -r requirements.txt
      ```
-   - 安装完成后，运行主程序：
+   - 安装 Web UI 依赖：
      ```bash
-     python main.py
+     npm --prefix webui install
+     ```
+   - 启动后端服务：
+     ```bash
+     python -m uvicorn backend.api_server:app --host 0.0.0.0 --port 8000
+     ```
+   - 启动 Web UI（新终端）：
+     ```bash
+     npm --prefix webui run dev
+     ```
+   - 或使用脚本一键启动：
+     ```bash
+     scripts/dev.sh
      ```
 
 >如果缺失部分依赖，后续**手动执行**
@@ -77,7 +89,7 @@
 ## 🗂 项目架构
 ```
 novel-generator/
-├── main.py                      # 入口文件, 运行 GUI
+├── backend/                     # FastAPI 服务
 ├── consistency_checker.py       # 一致性检查, 防止剧情冲突
 |—— chapter_directory_parser.py  # 目录解析
 |—— embedding_adapters.py        # Embedding 接口封装
@@ -87,7 +99,7 @@ novel-generator/
 ├── config_manager.py            # 管理配置 (API Key, Base URL)
 ├── config.json                  # 用户配置文件 (可选)
 ├── novel_generator/             # 章节生成核心逻辑
-├── ui/                          # 图形界面
+├── webui/                       # Web 前端
 └── vectorstore/                 # (可选) 本地向量数据库存储
 ```
 
@@ -140,20 +152,20 @@ novel-generator/
 ---
 
 ## 🚀 运行说明
-### **方式 1：使用 Python 解释器**
+### **方式 1：手动启动**
 ```bash
-python main.py
+python -m uvicorn backend.api_server:app --host 0.0.0.0 --port 8000
 ```
-执行后，GUI 将会启动，你可以在图形界面中进行各项操作。
-
-### **方式 2：打包为可执行文件**
-如果你想在无 Python 环境的机器上使用本工具，可以使用 **PyInstaller** 进行打包：
-
+另开一个终端启动前端：
 ```bash
-pip install pyinstaller
-pyinstaller main.spec
+npm --prefix webui run dev
 ```
-打包完成后，会在 `dist/` 目录下生成可执行文件（如 Windows 下的 `main.exe`）。
+执行后，在浏览器打开 Web 工作台进行操作。
+
+### **方式 2：一键启动**
+```bash
+scripts/dev.sh
+```
 
 ---
 
@@ -223,7 +235,7 @@ pyinstaller main.spec
 确认接口是否稳定；
 
 ### Q3: 如何切换不同的Embedding提供商？
-在GUI界面中对应输入即可。
+在 Web 工作台中对应输入即可。
 
 ---
 
