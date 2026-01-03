@@ -43,8 +43,6 @@ export interface WorkbenchFormState {
   keyItems?: string;
   sceneLocation?: string;
   timeConstraint?: string;
-  llmConfigName?: string;
-  embeddingConfigName?: string;
 }
 
 export interface ProjectState {

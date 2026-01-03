@@ -63,6 +63,13 @@ export async function getChooseConfigs() {
   );
 }
 
+export async function updateChooseConfigs(payload: Record<string, string>) {
+  return apiFetch<void>("/api/config/choose", {
+    method: "PUT",
+    body: JSON.stringify({ choose_configs: payload }),
+  });
+}
+
 export async function getProxyConfig() {
   return apiFetch<Record<string, unknown>>("/api/config/proxy");
 }

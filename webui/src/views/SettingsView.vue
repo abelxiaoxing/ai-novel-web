@@ -2,9 +2,14 @@
   <div class="settings-view fade-in">
     <header class="settings-header">
       <h1>设置中心</h1>
-      <p class="muted">管理模型配置、代理设置与系统偏好。</p>
+      <p class="muted">管理模型配置、默认选择与系统偏好。</p>
     </header>
     <section class="settings-grid">
+      <div class="panel section-card">
+        <h3>默认配置</h3>
+        <p class="muted">设置各任务使用的默认模型。</p>
+        <button class="btn btn-ghost" @click="openChooseManager">配置默认</button>
+      </div>
       <div class="panel section-card">
         <h3>大模型配置</h3>
         <p class="muted">管理提示词、架构与定稿所用模型。</p>
@@ -22,6 +27,62 @@
       </div>
     </section>
     <button class="btn btn-outline" @click="$router.push('/')">返回项目列表</button>
+
+    <ModalShell v-if="chooseModalOpen" @close="chooseModalOpen = false">
+      <div class="modal-header">
+        <h2>默认配置选择</h2>
+        <p class="muted">为各任务指定默认使用的模型配置。</p>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span class="field-label">架构生成</span>
+          <select class="select-field" v-model="chooseForm.architecture_llm">
+            <option value="">自动选择</option>
+            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">章节蓝图</span>
+          <select class="select-field" v-model="chooseForm.chapter_outline_llm">
+            <option value="">自动选择</option>
+            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">提示词/草稿</span>
+          <select class="select-field" v-model="chooseForm.prompt_draft_llm">
+            <option value="">自动选择</option>
+            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">章节定稿</span>
+          <select class="select-field" v-model="chooseForm.finalize_llm">
+            <option value="">自动选择</option>
+            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">一致性检查</span>
+          <select class="select-field" v-model="chooseForm.consistency_llm">
+            <option value="">自动选择</option>
+            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">向量模型</span>
+          <select class="select-field" v-model="chooseForm.embedding">
+            <option value="">自动选择</option>
+            <option v-for="name in configStore.embeddingConfigs" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </label>
+        <p v-if="chooseError" class="form-error">{{ chooseError }}</p>
+        <div class="action-row">
+          <button class="btn btn-primary" @click="saveChooseConfigs" :disabled="chooseSaving">保存</button>
+          <button class="btn btn-outline" @click="chooseModalOpen = false">关闭</button>
+        </div>
+      </div>
+    </ModalShell>
 
     <ModalShell v-if="configModalOpen" @close="configModalOpen = false">
       <div class="modal-header">
@@ -127,6 +188,7 @@ import {
   getWebdavConfig,
   testEmbeddingConfig,
   testLlmConfig,
+  updateChooseConfigs,
   updateEmbeddingConfig,
   updateLlmConfig,
   updateProxyConfig,
@@ -138,6 +200,7 @@ type ConfigType = "llm" | "embedding";
 const configStore = useConfigStore();
 const configModalOpen = ref(false);
 const proxyModalOpen = ref(false);
+const chooseModalOpen = ref(false);
 const activeConfigType = ref<ConfigType>("llm");
 const configNames = ref<string[]>([]);
 const configMap = ref<Record<string, unknown>>({});
@@ -149,6 +212,17 @@ const configTestMessage = ref("");
 const configTestStatus = ref<"success" | "failed" | "pending" | "">("");
 const configSaving = ref(false);
 const configTesting = ref(false);
+
+const chooseForm = reactive({
+  architecture_llm: "",
+  chapter_outline_llm: "",
+  prompt_draft_llm: "",
+  finalize_llm: "",
+  consistency_llm: "",
+  embedding: "",
+});
+const chooseError = ref("");
+const chooseSaving = ref(false);
 
 const proxyForm = reactive({
   proxy_url: "",
@@ -221,6 +295,32 @@ const openConfigManager = async (type: ConfigType) => {
   configTestMessage.value = "";
   configTestStatus.value = "";
   await loadConfigs();
+};
+
+const openChooseManager = () => {
+  chooseError.value = "";
+  const choose = configStore.chooseConfigs;
+  chooseForm.architecture_llm = choose.architecture_llm ?? "";
+  chooseForm.chapter_outline_llm = choose.chapter_outline_llm ?? "";
+  chooseForm.prompt_draft_llm = choose.prompt_draft_llm ?? "";
+  chooseForm.finalize_llm = choose.finalize_llm ?? "";
+  chooseForm.consistency_llm = choose.consistency_llm ?? "";
+  chooseForm.embedding = choose.embedding ?? "";
+  chooseModalOpen.value = true;
+};
+
+const saveChooseConfigs = async () => {
+  chooseSaving.value = true;
+  chooseError.value = "";
+  try {
+    await updateChooseConfigs({ ...chooseForm });
+    await configStore.fetchConfigs();
+    chooseModalOpen.value = false;
+  } catch (error) {
+    chooseError.value = error instanceof Error ? error.message : "保存失败";
+  } finally {
+    chooseSaving.value = false;
+  }
 };
 
 const handleConfigSelect = (event: Event) => {

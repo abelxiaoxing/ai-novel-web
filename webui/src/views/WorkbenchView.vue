@@ -87,8 +87,6 @@
 
       <RightPanel
         :form="form"
-        :llm-options="configStore.llmConfigs.length ? configStore.llmConfigs : ['默认']"
-        :embedding-options="configStore.embeddingConfigs.length ? configStore.embeddingConfigs : ['默认']"
         @update:form="Object.assign(form, $event)"
         @run="runAction"
         @import-knowledge="handleKnowledgeImport"
@@ -168,8 +166,6 @@ const form = reactive<WorkbenchForm>({
   keyItems: "",
   sceneLocation: "",
   timeConstraint: "",
-  llmConfigName: "",
-  embeddingConfigName: "",
 });
 
 const localStatePrefix = "ainovel:project-state:";
@@ -519,6 +515,7 @@ const runAction = async (action: string) => {
   if (!projectId) {
     return;
   }
+  const choose = configStore.chooseConfigs;
   const payloadBase = {
     novel_number: Number(form.chapterNumber),
     word_number: Number(form.wordNumber),
@@ -527,8 +524,8 @@ const runAction = async (action: string) => {
     scene_location: form.sceneLocation,
     time_constraint: form.timeConstraint,
     user_guidance: form.userGuidance,
-    llm_config_name: form.llmConfigName || undefined,
-    embedding_config_name: form.embeddingConfigName || undefined,
+    llm_config_name: choose.prompt_draft_llm || undefined,
+    embedding_config_name: choose.embedding || undefined,
   };
 
   switch (action) {
@@ -540,7 +537,7 @@ const runAction = async (action: string) => {
           number_of_chapters: Number(form.numberOfChapters),
           word_number: Number(form.wordNumber),
           user_guidance: form.userGuidance,
-          llm_config_name: form.llmConfigName || undefined,
+          llm_config_name: choose.architecture_llm || undefined,
         })
       );
       break;
@@ -549,7 +546,7 @@ const runAction = async (action: string) => {
         generateBlueprint(projectId, {
           number_of_chapters: Number(form.numberOfChapters),
           user_guidance: form.userGuidance,
-          llm_config_name: form.llmConfigName || undefined,
+          llm_config_name: choose.chapter_outline_llm || undefined,
         })
       );
       break;
@@ -568,8 +565,8 @@ const runAction = async (action: string) => {
         finalizeChapter(projectId, {
           novel_number: Number(form.chapterNumber),
           word_number: Number(form.wordNumber),
-          llm_config_name: form.llmConfigName || undefined,
-          embedding_config_name: form.embeddingConfigName || undefined,
+          llm_config_name: choose.finalize_llm || undefined,
+          embedding_config_name: choose.embedding || undefined,
         })
       );
       break;
@@ -580,7 +577,7 @@ const runAction = async (action: string) => {
           character_state: "",
           global_summary: "",
           chapter_text: projectStore.editorContent,
-          llm_config_name: form.llmConfigName || undefined,
+          llm_config_name: choose.consistency_llm || undefined,
         })
       );
       break;
@@ -684,24 +681,6 @@ watch(
     }
   },
   { immediate: true }
-);
-
-watch(
-  () => configStore.llmConfigs,
-  (values) => {
-    if (!form.llmConfigName && values.length) {
-      form.llmConfigName = values[0];
-    }
-  }
-);
-
-watch(
-  () => configStore.embeddingConfigs,
-  (values) => {
-    if (!form.embeddingConfigName && values.length) {
-      form.embeddingConfigName = values[0];
-    }
-  }
 );
 
 onMounted(async () => {

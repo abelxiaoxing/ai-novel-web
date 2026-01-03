@@ -21,7 +21,7 @@ defineProps<{
   activePath?: string | null;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   (event: "open", payload: ActiveFile): void;
 }>();
 </script>

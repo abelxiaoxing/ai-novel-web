@@ -66,23 +66,7 @@
       </div>
     </div>
     <div class="section">
-      <div class="section-title">定稿与模型</div>
-      <label class="field">
-        <span class="field-label">大模型配置</span>
-        <select class="select-field" :value="form.llmConfigName" @change="update('llmConfigName', $event)">
-          <option v-for="name in llmOptions" :key="name" :value="name">{{ name }}</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field-label">向量配置</span>
-        <select
-          class="select-field"
-          :value="form.embeddingConfigName"
-          @change="update('embeddingConfigName', $event)"
-        >
-          <option v-for="name in embeddingOptions" :key="name" :value="name">{{ name }}</option>
-        </select>
-      </label>
+      <div class="section-title">定稿</div>
       <div class="action-row">
         <button class="btn btn-ghost" @click="$emit('run', 'finalize')">章节定稿</button>
         <button class="btn btn-outline" @click="$emit('run', 'consistency')">一致性检查</button>
@@ -113,14 +97,10 @@ export type WorkbenchForm = {
   keyItems: string;
   sceneLocation: string;
   timeConstraint: string;
-  llmConfigName: string;
-  embeddingConfigName: string;
 };
 
 const props = defineProps<{
   form: WorkbenchForm;
-  llmOptions: string[];
-  embeddingOptions: string[];
 }>();
 
 const emit = defineEmits<{
