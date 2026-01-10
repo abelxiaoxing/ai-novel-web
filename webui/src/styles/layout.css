@@ -37,6 +37,12 @@
   transition: all 0.2s ease;
 }
 
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, var(--accent), #5d3bff);
   color: #f2edff;

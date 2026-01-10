@@ -10,7 +10,11 @@ export type TaskItem = {
   error?: string;
   outputFiles?: string[];
   logs: string[];
+  startedAt?: number;
+  completedAt?: number;
 };
+
+export type TaskCompletionCallback = (task: TaskItem) => void;
 
 export const useTaskStore = defineStore("tasks", {
   state: () => ({
@@ -18,6 +22,7 @@ export const useTaskStore = defineStore("tasks", {
     activeTaskId: null as string | null,
     pollers: {} as Record<string, number>,
     streams: {} as Record<string, EventSource>,
+    completionCallbacks: [] as TaskCompletionCallback[],
   }),
   getters: {
     activeTask(state) {
@@ -25,6 +30,31 @@ export const useTaskStore = defineStore("tasks", {
     },
   },
   actions: {
+    /**
+     * Register a callback to be called when a task completes
+     */
+    onTaskComplete(callback: TaskCompletionCallback): () => void {
+      this.completionCallbacks.push(callback);
+      // Return unsubscribe function
+      return () => {
+        const index = this.completionCallbacks.indexOf(callback);
+        if (index > -1) {
+          this.completionCallbacks.splice(index, 1);
+        }
+      };
+    },
+    /**
+     * Notify all registered callbacks of task completion
+     */
+    notifyTaskComplete(task: TaskItem): void {
+      for (const callback of this.completionCallbacks) {
+        try {
+          callback(task);
+        } catch (error) {
+          console.error("Task completion callback error:", error);
+        }
+      }
+    },
     registerTask(taskId: string, label: string) {
       const task: TaskItem = {
         id: taskId,
@@ -32,6 +62,7 @@ export const useTaskStore = defineStore("tasks", {
         status: "pending",
         outputFiles: [],
         logs: [],
+        startedAt: Date.now(),
       };
       this.tasks = [task, ...this.tasks.filter((item) => item.id !== taskId)];
       this.activeTaskId = taskId;
@@ -59,6 +90,7 @@ export const useTaskStore = defineStore("tasks", {
       this.pollers[taskId] = window.setInterval(async () => {
         try {
           const statusPayload = await getTaskStatus(taskId);
+          const previousStatus = this.tasks.find((t) => t.id === taskId)?.status;
           this.updateTask(taskId, {
             status: statusPayload.status,
             result: statusPayload.result,
@@ -66,16 +98,30 @@ export const useTaskStore = defineStore("tasks", {
             outputFiles: statusPayload.output_files ?? [],
           });
           if (statusPayload.status === "success" || statusPayload.status === "failed") {
+            this.updateTask(taskId, { completedAt: Date.now() });
             this.clearPoller(taskId);
             this.closeStream(taskId);
+            // Notify completion callbacks if status just changed to success/failed
+            if (previousStatus !== statusPayload.status) {
+              const task = this.tasks.find((t) => t.id === taskId);
+              if (task) {
+                this.notifyTaskComplete(task);
+              }
+            }
           }
         } catch (error) {
           this.updateTask(taskId, {
             status: "failed",
             error: error instanceof Error ? error.message : "任务执行失败",
+            completedAt: Date.now(),
           });
           this.clearPoller(taskId);
           this.closeStream(taskId);
+          // Notify completion callbacks on error
+          const task = this.tasks.find((t) => t.id === taskId);
+          if (task) {
+            this.notifyTaskComplete(task);
+          }
         }
       }, 1600);
     },

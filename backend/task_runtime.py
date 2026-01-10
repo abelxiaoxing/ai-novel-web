@@ -11,6 +11,7 @@ class TaskManager:
         self._lock = threading.Lock()
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._logs: Dict[str, List[str]] = {}
+        self._cancelled: Dict[str, bool] = {}
 
     def create_task(self, task_type: str, runner: Callable[[Callable[[str], None]], Dict[str, Any]]) -> str:
         task_id = uuid.uuid4().hex
@@ -24,6 +25,7 @@ class TaskManager:
                 "output_files": [],
             }
             self._logs[task_id] = []
+            self._cancelled[task_id] = False
 
         thread = threading.Thread(target=self._run_task, args=(task_id, runner), daemon=True)
         thread.start()
@@ -43,9 +45,25 @@ class TaskManager:
             if task_id in self._logs:
                 self._logs[task_id].append(message)
 
+    def cancel_task(self, task_id: str) -> bool:
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return False
+            if task.get("status") in ("success", "failed"):
+                return False
+            self._cancelled[task_id] = True
+            return True
+
+    def is_cancelled(self, task_id: str) -> bool:
+        with self._lock:
+            return self._cancelled.get(task_id, False)
+
     def _run_task(self, task_id: str, runner: Callable[[Callable[[str], None]], Dict[str, Any]]) -> None:
         self._update(task_id, status="running")
         try:
+            if self.is_cancelled(task_id):
+                raise RuntimeError("任务已取消")
             payload = runner(lambda msg: self.log(task_id, msg))
             result = payload.get("result") if isinstance(payload, dict) else None
             output_files = payload.get("output_files", []) if isinstance(payload, dict) else []
@@ -75,3 +93,5 @@ class TaskManager:
                 task["error"] = error
             if output_files is not None:
                 task["output_files"] = output_files
+            if status in ("success", "failed"):
+                self._cancelled.pop(task_id, None)

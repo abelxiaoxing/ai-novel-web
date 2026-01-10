@@ -2,8 +2,13 @@
   <div class="app-shell">
     <div class="ambient-glow" aria-hidden="true"></div>
     <router-view />
+    <ToastContainer />
   </div>
 </template>
+
+<script setup lang="ts">
+import ToastContainer from "@/components/ToastContainer.vue";
+</script>
 
 <style scoped>
 .app-shell {

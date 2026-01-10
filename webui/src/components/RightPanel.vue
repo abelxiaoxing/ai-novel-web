@@ -2,7 +2,42 @@
   <aside class="right-panel panel">
     <div class="panel-header">
       <div class="panel-title">生成控制</div>
-      <span class="muted">步骤 1-4</span>
+      <span class="muted">第 {{ workflowStore.currentChapter }}/{{ workflowStore.totalChapters }} 章</span>
+    </div>
+    <StepIndicator
+      :current-step="workflowStore.currentStep"
+      :completed-steps="workflowStore.completedSteps"
+    />
+    <div class="section">
+      <button class="section-toggle" type="button" @click="modelOpen = !modelOpen">
+        <span>模型配置</span>
+        <span class="muted">{{ modelSummary }}</span>
+        <span class="chevron">{{ modelOpen ? "▾" : "▸" }}</span>
+      </button>
+      <div v-if="modelOpen" class="section-body">
+        <label class="field">
+          <span class="field-label">LLM 配置</span>
+          <select class="select-field" :value="form.llmConfigName" @change="update('llmConfigName', $event)">
+            <option value="">默认配置</option>
+            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">
+              {{ name }}
+            </option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">Embedding 配置</span>
+          <select
+            class="select-field"
+            :value="form.embeddingConfigName"
+            @change="update('embeddingConfigName', $event)"
+          >
+            <option value="">默认配置</option>
+            <option v-for="name in configStore.embeddingConfigs" :key="name" :value="name">
+              {{ name }}
+            </option>
+          </select>
+        </label>
+      </div>
     </div>
     <div class="section">
       <div class="section-title">项目基础</div>
@@ -35,15 +70,27 @@
       </label>
       <div class="action-row">
         <button class="btn btn-primary" @click="$emit('run', 'architecture')">生成架构</button>
-        <button class="btn btn-ghost" @click="$emit('run', 'blueprint')">生成章节蓝图</button>
+        <button
+          class="btn btn-ghost"
+          :disabled="buttonStates.blueprintDisabled"
+          :title="disabledTooltip('blueprint')"
+          @click="$emit('run', 'blueprint')"
+        >
+          生成章节蓝图
+        </button>
       </div>
     </div>
     <div class="section">
       <div class="section-title">章节草稿</div>
-      <label class="field">
-        <span class="field-label">章节号</span>
-        <input class="input-field" type="number" :value="form.chapterNumber" @input="update('chapterNumber', $event)" />
-      </label>
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">章节号</span>
+          <input class="input-field" type="number" :value="form.chapterNumber" @input="update('chapterNumber', $event)" />
+        </label>
+        <button class="btn btn-ghost btn-next-chapter" @click="$emit('next-chapter')" title="下一章">
+          下一章 →
+        </button>
+      </div>
       <label class="field">
         <span class="field-label">核心人物</span>
         <input class="input-field" :value="form.charactersInvolved" @input="update('charactersInvolved', $event)" />
@@ -60,15 +107,43 @@
         <span class="field-label">时间约束</span>
         <input class="input-field" :value="form.timeConstraint" @input="update('timeConstraint', $event)" />
       </label>
+      <button class="section-toggle advanced-toggle" type="button" @click="advancedOpen = !advancedOpen">
+        <span>高级选项</span>
+        <span class="chevron">{{ advancedOpen ? "▾" : "▸" }}</span>
+      </button>
+      <div v-if="advancedOpen" class="section-body">
+        <button class="btn btn-ghost" @click="$emit('run', 'preview-prompt')">预览/编辑提示词</button>
+      </div>
       <div class="action-row">
-        <button class="btn btn-ghost" @click="$emit('run', 'build-prompt')">构建提示词</button>
-        <button class="btn btn-primary" @click="$emit('run', 'draft')">生成草稿</button>
+        <button
+          class="btn btn-primary"
+          :disabled="buttonStates.draftDisabled"
+          :title="disabledTooltip('draft')"
+          @click="$emit('run', 'draft')"
+        >
+          生成草稿
+        </button>
+        <button
+          class="btn btn-ghost"
+          :disabled="buttonStates.draftDisabled"
+          :title="disabledTooltip('draft')"
+          @click="$emit('run', 'batch')"
+        >
+          批量生成
+        </button>
       </div>
     </div>
     <div class="section">
       <div class="section-title">定稿</div>
       <div class="action-row">
-        <button class="btn btn-ghost" @click="$emit('run', 'finalize')">章节定稿</button>
+        <button
+          class="btn btn-ghost"
+          :disabled="buttonStates.finalizeDisabled"
+          :title="disabledTooltip('finalize')"
+          @click="$emit('run', 'finalize')"
+        >
+          章节定稿
+        </button>
         <button class="btn btn-outline" @click="$emit('run', 'consistency')">一致性检查</button>
       </div>
     </div>
@@ -84,7 +159,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { useWorkflowStore } from "@/stores/workflow";
+import { useConfigStore } from "@/stores/config";
+import StepIndicator from "./StepIndicator.vue";
 
 export type WorkbenchForm = {
   topic: string;
@@ -97,6 +175,8 @@ export type WorkbenchForm = {
   keyItems: string;
   sceneLocation: string;
   timeConstraint: string;
+  llmConfigName: string;
+  embeddingConfigName: string;
 };
 
 const props = defineProps<{
@@ -106,11 +186,28 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: "update:form", payload: WorkbenchForm): void;
   (event: "run", action: string): void;
+  (event: "next-chapter"): void;
   (event: "import-knowledge", file: File): void;
   (event: "clear-vectorstore"): void;
 }>();
 
+const workflowStore = useWorkflowStore();
+const configStore = useConfigStore();
 const fileInput = ref<HTMLInputElement | null>(null);
+const modelOpen = ref(false);
+const advancedOpen = ref(false);
+
+const buttonStates = computed(() => workflowStore.buttonStates);
+
+const disabledTooltip = (step: "architecture" | "blueprint" | "draft" | "finalize") => {
+  return workflowStore.getDisabledTooltip(step) ?? "";
+};
+
+const modelSummary = computed(() => {
+  const llmLabel = props.form.llmConfigName || "默认 LLM";
+  const embeddingLabel = props.form.embeddingConfigName || "默认 Embedding";
+  return `${llmLabel} · ${embeddingLabel}`;
+});
 
 const update = (field: keyof WorkbenchForm, event: Event) => {
   const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
@@ -149,6 +246,37 @@ const handleFile = (event: Event) => {
   border-bottom: none;
 }
 
+.section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: rgba(15, 11, 22, 0.4);
+  border: 1px solid rgba(229, 225, 245, 0.08);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+
+.section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chevron {
+  color: var(--accent-bright);
+  font-size: 12px;
+}
+
+.advanced-toggle {
+  margin-top: 4px;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -172,6 +300,11 @@ const handleFile = (event: Event) => {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.btn-next-chapter {
+  align-self: flex-end;
+  white-space: nowrap;
 }
 
 .file-input {

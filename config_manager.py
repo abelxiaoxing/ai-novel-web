@@ -34,7 +34,7 @@ def create_config(config_file: str) -> dict:
             "model_name": "deepseek-chat",
             "temperature": 0.7,
             "max_tokens": 8192,
-            "timeout": 600,
+            "timeout": 900,
             "interface_format": "OpenAI"
         },
         "GPT 5": {
@@ -43,7 +43,7 @@ def create_config(config_file: str) -> dict:
             "model_name": "gpt-5",
             "temperature": 0.7,
             "max_tokens": 32768,
-            "timeout": 600,
+            "timeout": 900,
             "interface_format": "OpenAI"
         },
         "Gemini 2.5 Pro": {
@@ -52,7 +52,7 @@ def create_config(config_file: str) -> dict:
             "model_name": "gemini-2.5-pro",
             "temperature": 0.7,
             "max_tokens": 32768,
-            "timeout": 600,
+            "timeout": 900,
             "interface_format": "OpenAI"
         }
     },

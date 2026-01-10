@@ -1,6 +1,7 @@
 export interface Project {
   id: string;
   name: string;
+  topic?: string;
   genre?: string;
   num_chapters?: number;
   word_number?: number;
@@ -43,6 +44,12 @@ export interface WorkbenchFormState {
   keyItems?: string;
   sceneLocation?: string;
   timeConstraint?: string;
+  llmConfigName?: string;
+  embeddingConfigName?: string;
+}
+
+export interface WorkflowSnapshot {
+  finalizedChapters?: number[];
 }
 
 export interface ProjectState {
@@ -52,6 +59,7 @@ export interface ProjectState {
     kind: "file" | "chapter";
     chapterNumber?: number;
   };
+  workflow?: WorkflowSnapshot;
 }
 
 export type TaskStatus = "pending" | "running" | "success" | "failed";

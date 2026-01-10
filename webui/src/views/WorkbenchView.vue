@@ -6,7 +6,7 @@
         :status-label="statusLabel"
         :status-variant="statusVariant"
         @projects="goProjects"
-        @save="projectStore.saveActiveFile()"
+        @save="handleSaveActiveFile"
         @settings="goSettings"
       />
 
@@ -57,6 +57,8 @@
         :nodes="projectStore.fileTree"
         :active-path="projectStore.activeFile?.path"
         @open="projectStore.openFile"
+        @rename="handleFileRename"
+        @delete="handleFileDelete"
       />
 
       <aside v-else-if="activeTool === 'roles'" class="sidebar panel">
@@ -82,13 +84,14 @@
         :subtitle="editorSubtitle"
         :content="projectStore.editorContent"
         @update:content="projectStore.setEditorContent"
-        @save="projectStore.saveActiveFile()"
+        @save="handleSaveActiveFile"
       />
 
       <RightPanel
         :form="form"
-        @update:form="Object.assign(form, $event)"
+        @update:form="handleFormUpdate"
         @run="runAction"
+        @next-chapter="handleNextChapter"
         @import-knowledge="handleKnowledgeImport"
         @clear-vectorstore="handleVectorStoreClear"
       />
@@ -109,9 +112,22 @@
       @confirm="usePrompt"
     />
 
-    <div v-if="projectStore.error" class="error-banner">
-      {{ projectStore.error }}
-    </div>
+    <BatchGenerateModal
+      v-if="batchModalOpen"
+      :start-chapter="batchDefaults.start"
+      :end-chapter="batchDefaults.end"
+      :delay-seconds="batchConfig.delaySeconds"
+      :running="batchRunning"
+      :progress-text="batchProgressText"
+      :progress-percent="batchProgressPercent"
+      :summary="batchSummary"
+      :error="batchError"
+      :cancel-requested="batchCancelRequested"
+      @submit="startBatch"
+      @cancel="cancelBatch"
+      @close="batchModalOpen = false"
+    />
+
   </div>
 </template>
 
@@ -120,23 +136,29 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ActivityBar from "@/components/ActivityBar.vue";
 import BottomPanel from "@/components/BottomPanel.vue";
+import BatchGenerateModal from "@/components/BatchGenerateModal.vue";
 import EditorPane from "@/components/EditorPane.vue";
 import PromptModal from "@/components/PromptModal.vue";
 import RightPanel, { type WorkbenchForm } from "@/components/RightPanel.vue";
 import Sidebar from "@/components/Sidebar.vue";
 import TopBar from "@/components/TopBar.vue";
-import type { ProjectState, WorkbenchFormState } from "@/api/types";
-import { getProjectState, updateProjectState } from "@/api/projects";
+import type { ProjectState, WorkbenchFormState, WorkflowSnapshot } from "@/api/types";
+import { getProjectFile, getProjectState, updateProjectState } from "@/api/projects";
 import { useConfigStore } from "@/stores/config";
 import { useProjectStore, type ActiveFile, type FileNode } from "@/stores/project";
 import { useTaskStore } from "@/stores/task";
+import { useToastStore } from "@/stores/toast";
+import { useWorkflowStore } from "@/stores/workflow";
+import { useChapterInfo } from "@/composables/useChapterInfo";
 import {
   buildPrompt,
+  cancelTask,
   consistencyCheck,
   clearVectorStore,
   finalizeChapter,
   generateArchitecture,
   generateBlueprint,
+  generateBatch,
   generateDraft,
   importKnowledge,
 } from "@/api/tasks";
@@ -146,6 +168,8 @@ const router = useRouter();
 const projectStore = useProjectStore();
 const taskStore = useTaskStore();
 const configStore = useConfigStore();
+const toastStore = useToastStore();
+const workflowStore = useWorkflowStore();
 
 const activeTool = ref("files");
 const promptModalOpen = ref(false);
@@ -154,6 +178,7 @@ const pendingPromptTask = ref<string | null>(null);
 const handledTasks = ref(new Set<string>());
 const stateLoaded = ref(false);
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const taskActionMap = new Map<string, string>();
 
 const form = reactive<WorkbenchForm>({
   topic: "",
@@ -166,7 +191,37 @@ const form = reactive<WorkbenchForm>({
   keyItems: "",
   sceneLocation: "",
   timeConstraint: "",
+  llmConfigName: "",
+  embeddingConfigName: "",
 });
+
+const blueprintContent = ref("");
+const autoFillLock = ref(false);
+const chapterNumberValue = computed(() => {
+  const parsed = Number(form.chapterNumber);
+  return Number.isNaN(parsed) ? 0 : parsed;
+});
+
+const { markAsOverridden } = useChapterInfo({
+  chapterNumber: chapterNumberValue,
+  blueprintContent,
+  onAutoFill: (info) => {
+    autoFillLock.value = true;
+    form.charactersInvolved = info.characters.join("、");
+    form.sceneLocation = info.scenes.join("、");
+    autoFillLock.value = false;
+  },
+});
+
+const batchModalOpen = ref(false);
+const batchRunning = ref(false);
+const batchCancelRequested = ref(false);
+const batchProgress = ref({ current: 0, total: 0 });
+const batchSummary = ref("");
+const batchError = ref("");
+const batchTaskId = ref<string | null>(null);
+const batchConfig = ref({ start: 1, end: 1, delaySeconds: 0 });
+const workflowSnapshot = ref<WorkflowSnapshot>({ finalizedChapters: [] });
 
 const localStatePrefix = "ainovel:project-state:";
 
@@ -217,7 +272,50 @@ const mergeProjectState = (
     ...safeRemote,
     form: { ...safeLocal.form, ...safeRemote.form },
     activeFile: safeRemote.activeFile ?? safeLocal.activeFile,
+    workflow: { ...safeLocal.workflow, ...safeRemote.workflow },
   };
+};
+
+const normalizeWorkflowSnapshot = (value?: WorkflowSnapshot): WorkflowSnapshot => {
+  if (!value || typeof value !== "object") {
+    return { finalizedChapters: [] };
+  }
+  const finalizedChapters = Array.isArray(value.finalizedChapters)
+    ? value.finalizedChapters
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item > 0)
+    : [];
+  return { finalizedChapters };
+};
+
+const normalizePayloadContent = (payload: unknown): string => {
+  if (typeof payload === "string") {
+    return payload;
+  }
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "content" in payload &&
+    typeof (payload as { content: string }).content === "string"
+  ) {
+    return (payload as { content: string }).content;
+  }
+  return "";
+};
+
+const loadBlueprintContent = async () => {
+  const projectId = projectStore.currentProject?.id;
+  if (!projectId) {
+    blueprintContent.value = "";
+    return;
+  }
+  try {
+    const payload = await getProjectFile(projectId, "directory");
+    blueprintContent.value = normalizePayloadContent(payload);
+  } catch (error) {
+    console.warn("Failed to load blueprint content.", error);
+    blueprintContent.value = "";
+  }
 };
 
 const statusLabel = computed(() => {
@@ -420,6 +518,60 @@ const resolveFallbackFile = (): ActiveFile | null => {
   };
 };
 
+const fetchProjectFileContent = async (fileKey: string): Promise<string> => {
+  const projectId = projectStore.currentProject?.id;
+  if (!projectId) {
+    return "";
+  }
+  try {
+    const payload = await getProjectFile(projectId, fileKey);
+    return normalizePayloadContent(payload);
+  } catch (error) {
+    console.warn(`Failed to load ${fileKey} content.`, error);
+    return "";
+  }
+};
+
+const syncWorkflowFromProject = async () => {
+  const projectId = projectStore.currentProject?.id;
+  if (!projectId) {
+    return;
+  }
+
+  const currentChapter =
+    chapterNumberValue.value > 0 ? chapterNumberValue.value : workflowStore.currentChapter;
+  const chapters = collectChapterNumbers(projectStore.fileTree);
+  const hasDraft = currentChapter > 0 && chapters.includes(currentChapter);
+
+  const [architectureText, blueprintText] = await Promise.all([
+    fetchProjectFileContent("architecture"),
+    fetchProjectFileContent("directory"),
+  ]);
+
+  const hasArchitecture = architectureText.trim().length > 0;
+  const hasBlueprint = blueprintText.trim().length > 0;
+  const finalizedChapters = workflowSnapshot.value.finalizedChapters ?? [];
+  const hasFinalize = hasDraft && finalizedChapters.includes(currentChapter);
+
+  const normalizedHasBlueprint = hasBlueprint || hasDraft || hasFinalize;
+  const normalizedHasArchitecture = hasArchitecture || normalizedHasBlueprint;
+
+  const totalChapters = Number(form.numberOfChapters);
+  const resolvedTotalChapters =
+    Number.isFinite(totalChapters) && totalChapters > 0
+      ? totalChapters
+      : workflowStore.totalChapters;
+
+  workflowStore.initializeFromProject({
+    hasArchitecture: normalizedHasArchitecture,
+    hasBlueprint: normalizedHasBlueprint,
+    hasDraft,
+    hasFinalize,
+    totalChapters: resolvedTotalChapters,
+    currentChapter,
+  });
+};
+
 const queueSaveState = () => {
   if (!stateLoaded.value) {
     return;
@@ -440,6 +592,7 @@ const queueSaveState = () => {
           chapterNumber: projectStore.activeFile.chapterNumber,
         }
       : undefined,
+    workflow: { ...workflowSnapshot.value },
   };
   saveLocalState(projectId, payload);
   saveTimer = setTimeout(async () => {
@@ -466,6 +619,7 @@ const loadProjectState = async () => {
     console.warn("Failed to load project state.", error);
   }
   const state = mergeProjectState(remoteState, localState);
+  workflowSnapshot.value = normalizeWorkflowSnapshot(state.workflow);
   try {
     applyFormState(state.form);
     const activeFile = normalizeActiveFile(state.activeFile);
@@ -480,6 +634,19 @@ const loadProjectState = async () => {
     if (fallback) {
       await projectStore.openFile(fallback);
     }
+  }
+  await syncWorkflowFromProject();
+};
+
+const handleSaveActiveFile = async () => {
+  await projectStore.saveActiveFile();
+  const activeFile = projectStore.activeFile;
+  if (
+    activeFile?.kind === "chapter" ||
+    activeFile?.path === "architecture" ||
+    activeFile?.path === "directory"
+  ) {
+    await syncWorkflowFromProject();
   }
 };
 
@@ -499,14 +666,183 @@ const handleToolSelect = (tool: string) => {
   activeTool.value = tool;
 };
 
-const runTask = async (label: string, apiCall: () => Promise<{ task_id: string }>) => {
+const handleFormUpdate = (nextForm: WorkbenchForm) => {
+  const prevCharacters = form.charactersInvolved;
+  const prevScene = form.sceneLocation;
+  Object.assign(form, nextForm);
+  if (
+    !autoFillLock.value &&
+    (nextForm.charactersInvolved !== prevCharacters ||
+      nextForm.sceneLocation !== prevScene)
+  ) {
+    markAsOverridden();
+  }
+};
+
+const clearChapterFields = () => {
+  form.charactersInvolved = "";
+  form.keyItems = "";
+  form.sceneLocation = "";
+  form.timeConstraint = "";
+};
+
+const advanceChapter = (clearFields: boolean) => {
+  const advanced = workflowStore.incrementChapter();
+  if (!advanced) {
+    toastStore.info("章节已全部完成。");
+    return false;
+  }
+  form.chapterNumber = String(workflowStore.currentChapter);
+  if (clearFields) {
+    clearChapterFields();
+  }
+  return true;
+};
+
+const handleNextChapter = () => {
+  advanceChapter(true);
+};
+
+const batchDefaults = computed(() => {
+  const start = chapterNumberValue.value > 0 ? chapterNumberValue.value : 1;
+  const total = Number(form.numberOfChapters);
+  const end = Number.isFinite(total) && total >= start ? total : start;
+  return { start, end };
+});
+
+const batchProgressText = computed(() => {
+  if (!batchRunning.value) {
+    return "准备生成...";
+  }
+  if (batchCancelRequested.value) {
+    return "正在取消批量生成...";
+  }
+  const total = batchProgress.value.total;
+  if (!total || batchProgress.value.current === 0) {
+    return "准备生成...";
+  }
+  return `正在生成第 ${batchProgress.value.current}/${total} 章`;
+});
+
+const batchProgressPercent = computed(() => {
+  const total = batchProgress.value.total;
+  if (!total) {
+    return 0;
+  }
+  return Math.min(100, Math.round((batchProgress.value.current / total) * 100));
+});
+
+const parseBatchProgress = (logs: string[]) => {
+  const pattern = /(Drafting|Enriching) chapter (\d+)/i;
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const match = pattern.exec(logs[i]);
+    if (match) {
+      const chapterNumber = Number(match[2]);
+      if (!Number.isNaN(chapterNumber)) {
+        const current = chapterNumber - batchConfig.value.start + 1;
+        batchProgress.value.current = Math.max(1, current);
+      }
+      break;
+    }
+  }
+  if (logs.some((line) => /batch completed/i.test(line))) {
+    batchProgress.value.current = batchProgress.value.total;
+  }
+};
+
+const batchTask = computed(() =>
+  batchTaskId.value ? taskStore.tasks.find((task) => task.id === batchTaskId.value) ?? null : null
+);
+
+const buildBatchSummary = (task: { result?: Record<string, unknown> | null }) => {
+  const payload = task.result as { chapters?: Array<{ chapter?: number; length?: number }> } | null;
+  const chapters = payload?.chapters;
+  if (Array.isArray(chapters) && chapters.length) {
+    const total = chapters.length;
+    const avgLength = Math.round(
+      chapters.reduce((sum, item) => sum + (item.length ?? 0), 0) / total
+    );
+    return `批量生成完成：${total} 章，平均字数 ${avgLength}。`;
+  }
+  return "批量生成完成。";
+};
+
+const runTask = async (
+  label: string,
+  apiCall: () => Promise<{ task_id: string }>,
+  actionKey?: string
+) => {
   try {
     const payload = await apiCall();
     taskStore.registerTask(payload.task_id, label);
+    if (actionKey) {
+      taskActionMap.set(payload.task_id, actionKey);
+    }
     return payload.task_id;
   } catch (error) {
     projectStore.error = error instanceof Error ? error.message : "任务执行失败";
     return null;
+  }
+};
+
+const openBatchModal = () => {
+  batchModalOpen.value = true;
+  batchSummary.value = "";
+  batchError.value = "";
+};
+
+const startBatch = async (payload: { start: number; end: number; delaySeconds: number }) => {
+  const projectId = projectStore.currentProject?.id;
+  if (!projectId) {
+    return;
+  }
+  const choose = configStore.chooseConfigs;
+  const resolveLlm = (fallback?: string) => form.llmConfigName || fallback || undefined;
+  const resolveEmbedding = () => form.embeddingConfigName || choose.embedding || undefined;
+  batchSummary.value = "";
+  batchError.value = "";
+  batchRunning.value = true;
+  batchCancelRequested.value = false;
+  batchConfig.value = payload;
+  batchProgress.value = {
+    current: 0,
+    total: Math.max(0, payload.end - payload.start + 1),
+  };
+  const taskId = await runTask(
+    "批量生成",
+    () =>
+      generateBatch(projectId, {
+        start_chapter: payload.start,
+        end_chapter: payload.end,
+        delay_seconds: payload.delaySeconds,
+        word_number: Number(form.wordNumber),
+        characters_involved: form.charactersInvolved,
+        key_items: form.keyItems,
+        scene_location: form.sceneLocation,
+        time_constraint: form.timeConstraint,
+        user_guidance: form.userGuidance,
+        llm_config_name: resolveLlm(choose.prompt_draft_llm),
+        embedding_config_name: resolveEmbedding(),
+      }),
+    "batch"
+  );
+  if (!taskId) {
+    batchRunning.value = false;
+    return;
+  }
+  batchTaskId.value = taskId;
+};
+
+const cancelBatch = async () => {
+  if (!batchTaskId.value || batchCancelRequested.value) {
+    return;
+  }
+  batchCancelRequested.value = true;
+  try {
+    await cancelTask(batchTaskId.value);
+  } catch (error) {
+    batchCancelRequested.value = false;
+    batchError.value = error instanceof Error ? error.message : "取消失败";
   }
 };
 
@@ -516,6 +852,8 @@ const runAction = async (action: string) => {
     return;
   }
   const choose = configStore.chooseConfigs;
+  const resolveLlm = (fallback?: string) => form.llmConfigName || fallback || undefined;
+  const resolveEmbedding = () => form.embeddingConfigName || choose.embedding || undefined;
   const payloadBase = {
     novel_number: Number(form.chapterNumber),
     word_number: Number(form.wordNumber),
@@ -524,61 +862,80 @@ const runAction = async (action: string) => {
     scene_location: form.sceneLocation,
     time_constraint: form.timeConstraint,
     user_guidance: form.userGuidance,
-    llm_config_name: choose.prompt_draft_llm || undefined,
-    embedding_config_name: choose.embedding || undefined,
+    llm_config_name: resolveLlm(choose.prompt_draft_llm),
+    embedding_config_name: resolveEmbedding(),
   };
 
   switch (action) {
     case "architecture":
-      await runTask("生成架构", () =>
-        generateArchitecture(projectId, {
-          topic: form.topic,
-          genre: form.genre,
-          number_of_chapters: Number(form.numberOfChapters),
-          word_number: Number(form.wordNumber),
-          user_guidance: form.userGuidance,
-          llm_config_name: choose.architecture_llm || undefined,
-        })
+      await runTask(
+        "生成架构",
+        () =>
+          generateArchitecture(projectId, {
+            topic: form.topic,
+            genre: form.genre,
+            number_of_chapters: Number(form.numberOfChapters),
+            word_number: Number(form.wordNumber),
+            user_guidance: form.userGuidance,
+            llm_config_name: resolveLlm(choose.architecture_llm),
+          }),
+        "architecture"
       );
       break;
     case "blueprint":
-      await runTask("生成章节蓝图", () =>
-        generateBlueprint(projectId, {
-          number_of_chapters: Number(form.numberOfChapters),
-          user_guidance: form.userGuidance,
-          llm_config_name: choose.chapter_outline_llm || undefined,
-        })
+      await runTask(
+        "生成章节蓝图",
+        () =>
+          generateBlueprint(projectId, {
+            number_of_chapters: Number(form.numberOfChapters),
+            user_guidance: form.userGuidance,
+            llm_config_name: resolveLlm(choose.chapter_outline_llm),
+          }),
+        "blueprint"
       );
       break;
-    case "build-prompt": {
-      const taskId = await runTask("构建提示词", () => buildPrompt(projectId, payloadBase));
+    case "preview-prompt": {
+      const taskId = await runTask(
+        "预览提示词",
+        () => buildPrompt(projectId, payloadBase),
+        "preview-prompt"
+      );
       if (taskId) {
         pendingPromptTask.value = taskId;
       }
       break;
     }
+    case "batch":
+      openBatchModal();
+      break;
     case "draft":
-      await runTask("生成草稿", () => generateDraft(projectId, payloadBase));
+      await runTask("生成草稿", () => generateDraft(projectId, payloadBase), "draft");
       break;
     case "finalize":
-      await runTask("章节定稿", () =>
-        finalizeChapter(projectId, {
-          novel_number: Number(form.chapterNumber),
-          word_number: Number(form.wordNumber),
-          llm_config_name: choose.finalize_llm || undefined,
-          embedding_config_name: choose.embedding || undefined,
-        })
+      await runTask(
+        "章节定稿",
+        () =>
+          finalizeChapter(projectId, {
+            novel_number: Number(form.chapterNumber),
+            word_number: Number(form.wordNumber),
+            llm_config_name: resolveLlm(choose.finalize_llm),
+            embedding_config_name: resolveEmbedding(),
+          }),
+        "finalize"
       );
       break;
     case "consistency":
-      await runTask("一致性检查", () =>
-        consistencyCheck(projectId, {
-          novel_setting: "",
-          character_state: "",
-          global_summary: "",
-          chapter_text: projectStore.editorContent,
-          llm_config_name: choose.consistency_llm || undefined,
-        })
+      await runTask(
+        "一致性检查",
+        () =>
+          consistencyCheck(projectId, {
+            novel_setting: "",
+            character_state: "",
+            global_summary: "",
+            chapter_text: projectStore.editorContent,
+            llm_config_name: resolveLlm(choose.consistency_llm),
+          }),
+        "consistency"
       );
       break;
     default:
@@ -592,19 +949,25 @@ const usePrompt = async (value: string) => {
   if (!projectId) {
     return;
   }
-  await runTask("生成草稿", () =>
-    generateDraft(projectId, {
-      novel_number: Number(form.chapterNumber),
-      word_number: Number(form.wordNumber),
-      characters_involved: form.charactersInvolved,
-      key_items: form.keyItems,
-      scene_location: form.sceneLocation,
-      time_constraint: form.timeConstraint,
-      user_guidance: form.userGuidance,
-      llm_config_name: form.llmConfigName || undefined,
-      embedding_config_name: form.embeddingConfigName || undefined,
-      custom_prompt_text: value,
-    })
+  const choose = configStore.chooseConfigs;
+  const resolveLlm = (fallback?: string) => form.llmConfigName || fallback || undefined;
+  const resolveEmbedding = () => form.embeddingConfigName || choose.embedding || undefined;
+  await runTask(
+    "生成草稿",
+    () =>
+      generateDraft(projectId, {
+        novel_number: Number(form.chapterNumber),
+        word_number: Number(form.wordNumber),
+        characters_involved: form.charactersInvolved,
+        key_items: form.keyItems,
+        scene_location: form.sceneLocation,
+        time_constraint: form.timeConstraint,
+        user_guidance: form.userGuidance,
+        llm_config_name: resolveLlm(choose.prompt_draft_llm),
+        embedding_config_name: resolveEmbedding(),
+        custom_prompt_text: value,
+      }),
+    "draft"
   );
 };
 
@@ -626,16 +989,162 @@ const handleVectorStoreClear = async () => {
   await runTask("清空向量库", () => clearVectorStore(projectId));
 };
 
+const parseChapterNumber = (name: string): number | null => {
+  const numeric = Number(name);
+  if (Number.isInteger(numeric) && numeric > 0) {
+    return numeric;
+  }
+  const match = /^chapter_(\d+)\.txt$/i.exec(name.trim());
+  if (match) {
+    const parsed = Number(match[1]);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const handleFileDelete = async (node: FileNode) => {
+  if (typeof node.chapterNumber !== "number") {
+    toastStore.warning("仅支持删除章节文件。");
+    return;
+  }
+  const ok = window.confirm(`确定要删除第 ${node.chapterNumber} 章吗？该操作无法撤销。`);
+  if (!ok) {
+    return;
+  }
+  try {
+    await projectStore.deleteChapterFile(node.chapterNumber);
+    const finalized = workflowSnapshot.value.finalizedChapters ?? [];
+    if (finalized.includes(node.chapterNumber)) {
+      workflowSnapshot.value = {
+        ...workflowSnapshot.value,
+        finalizedChapters: finalized.filter((chapter) => chapter !== node.chapterNumber),
+      };
+      queueSaveState();
+    }
+    toastStore.success(`已删除第 ${node.chapterNumber} 章`);
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : "删除章节失败");
+  }
+};
+
+const handleFileRename = async (payload: { node: FileNode; name: string }) => {
+  const { node, name } = payload;
+  if (typeof node.chapterNumber !== "number") {
+    toastStore.warning("仅支持重命名章节文件。");
+    return;
+  }
+  const nextNumber = parseChapterNumber(name);
+  if (!nextNumber) {
+    toastStore.warning("章节命名需为数字或 chapter_数字.txt 格式。");
+    return;
+  }
+  if (nextNumber === node.chapterNumber) {
+    return;
+  }
+  try {
+    await projectStore.renameChapterFile(node.chapterNumber, nextNumber);
+    if (projectStore.activeFile?.chapterNumber === node.chapterNumber) {
+      await projectStore.openFile({
+        path: `chapter:${nextNumber}`,
+        name: localizePath(`chapter:${nextNumber}`),
+        kind: "chapter",
+        chapterNumber: nextNumber,
+      });
+    }
+    const finalized = workflowSnapshot.value.finalizedChapters ?? [];
+    if (finalized.includes(node.chapterNumber)) {
+      workflowSnapshot.value = {
+        ...workflowSnapshot.value,
+        finalizedChapters: finalized
+          .filter((chapter) => chapter !== node.chapterNumber)
+          .concat(nextNumber)
+          .sort((a, b) => a - b),
+      };
+      queueSaveState();
+    }
+    toastStore.success(`章节已重命名为第 ${nextNumber} 章`);
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : "重命名章节失败");
+  }
+};
+
 watch(
   () => taskStore.tasks,
   async () => {
     for (const task of taskStore.tasks) {
-      if (task.status === "success" && !handledTasks.value.has(task.id)) {
+      if (
+        (task.status === "success" || task.status === "failed") &&
+        !handledTasks.value.has(task.id)
+      ) {
         handledTasks.value.add(task.id);
-        await projectStore.refreshFileTree();
-        const outputFile = task.outputFiles?.[0];
-        if (outputFile && (!projectStore.activeFile || !projectStore.editorContent.trim())) {
-          await openOutputFile(outputFile);
+        const action = taskActionMap.get(task.id);
+        if (task.status === "success") {
+          await projectStore.refreshFileTree();
+          const outputFile = task.outputFiles?.[0];
+          if (
+            outputFile &&
+            (!projectStore.activeFile || !projectStore.editorContent.trim())
+          ) {
+            await openOutputFile(outputFile);
+          }
+        }
+        const currentChapter = workflowStore.currentChapter;
+        if (task.status === "success") {
+          if (action === "architecture" || action === "blueprint" || action === "draft" || action === "finalize") {
+            workflowStore.completeStep(action);
+          }
+          if (action === "finalize" && currentChapter > 0) {
+            const finalized = workflowSnapshot.value.finalizedChapters ?? [];
+            if (!finalized.includes(currentChapter)) {
+              workflowSnapshot.value = {
+                ...workflowSnapshot.value,
+                finalizedChapters: [...finalized, currentChapter].sort((a, b) => a - b),
+              };
+              queueSaveState();
+            }
+          }
+          if (action === "blueprint") {
+            await loadBlueprintContent();
+          }
+          if (action === "draft" || action === "finalize") {
+            advanceChapter(false);
+          }
+          if (action === "batch") {
+            batchRunning.value = false;
+            batchCancelRequested.value = false;
+            batchProgress.value.current = batchProgress.value.total;
+            batchSummary.value = buildBatchSummary(task);
+          }
+          const stepToastMap: Record<string, string> = {
+            architecture: "架构已完成，下一步生成章节蓝图。",
+            blueprint: "蓝图已完成，下一步生成章节草稿。",
+            draft: "草稿已完成，可继续生成下一章或进行定稿。",
+            finalize: "定稿已完成，可以开始下一章。",
+          };
+          if (action && stepToastMap[action]) {
+            toastStore.success(stepToastMap[action]);
+          } else {
+            toastStore.success(`${task.label}完成`);
+          }
+        } else {
+          const message = task.error ? `${task.label}失败：${task.error}` : `${task.label}失败`;
+          if (action === "batch") {
+            await projectStore.refreshFileTree();
+            batchRunning.value = false;
+            batchCancelRequested.value = false;
+            if (task.error && task.error.includes("取消")) {
+              batchSummary.value = "批量生成已取消。";
+              batchError.value = "";
+            } else {
+              batchError.value = task.error ?? "批量生成失败。";
+            }
+          }
+          toastStore.error(message);
+        }
+        if (action) {
+          taskActionMap.delete(task.id);
         }
       }
     }
@@ -659,6 +1168,17 @@ watch(
   { deep: true }
 );
 
+watch(
+  () => batchTask.value?.logs,
+  (logs) => {
+    if (!logs) {
+      return;
+    }
+    parseBatchProgress(logs);
+  },
+  { deep: true }
+);
+
 watch(form, () => queueSaveState(), { deep: true });
 
 watch(
@@ -667,10 +1187,35 @@ watch(
 );
 
 watch(
+  () => form.numberOfChapters,
+  (value) => {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      workflowStore.setTotalChapters(parsed);
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => form.chapterNumber,
+  (value) => {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      workflowStore.setCurrentChapter(parsed);
+    }
+  },
+  { immediate: true }
+);
+
+watch(
   () => projectStore.currentProject,
   (project) => {
     if (!project) {
       return;
+    }
+    if (project.topic) {
+      form.topic = project.topic;
     }
     form.genre = project.genre ?? form.genre;
     if (project.num_chapters) {
@@ -679,8 +1224,19 @@ watch(
     if (project.word_number) {
       form.wordNumber = String(project.word_number);
     }
+    loadBlueprintContent();
   },
   { immediate: true }
+);
+
+watch(
+  () => projectStore.error,
+  (error) => {
+    if (error) {
+      toastStore.error(error);
+      projectStore.error = null;
+    }
+  }
 );
 
 onMounted(async () => {
@@ -689,22 +1245,13 @@ onMounted(async () => {
     configStore.fetchConfigs(),
   ]);
   await loadProjectState();
+  await loadBlueprintContent();
 });
 </script>
 
 <style scoped>
 .workbench-view {
   min-height: 100vh;
-}
-
-.error-banner {
-  position: fixed;
-  bottom: 24px;
-  left: 24px;
-  background: rgba(239, 68, 68, 0.18);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  padding: 12px 16px;
-  border-radius: 12px;
 }
 
 .sidebar {

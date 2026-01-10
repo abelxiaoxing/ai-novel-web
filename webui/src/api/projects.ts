@@ -79,6 +79,23 @@ export async function updateChapter(
   });
 }
 
+export async function deleteChapter(projectId: string, number: number) {
+  return apiFetch<void>(`/api/projects/${projectId}/chapters/${number}`, {
+    method: "DELETE",
+  });
+}
+
+export async function renameChapter(
+  projectId: string,
+  number: number,
+  newNumber: number
+) {
+  return apiFetch<void>(`/api/projects/${projectId}/chapters/${number}/rename`, {
+    method: "POST",
+    body: JSON.stringify({ new_number: newNumber }),
+  });
+}
+
 export async function getProjectState(projectId: string) {
   return apiFetch<ProjectState>(`/api/projects/${projectId}/state`);
 }

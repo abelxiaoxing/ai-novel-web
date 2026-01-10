@@ -5,7 +5,13 @@
       <span class="muted">{{ fileCount }} 项</span>
     </div>
     <div class="sidebar-body">
-      <FileTree :nodes="nodes" :active-path="activePath" @open="emit('open', $event)" />
+      <FileTree
+        :nodes="nodes"
+        :active-path="activePath"
+        @open="emit('open', $event)"
+        @rename="emit('rename', $event)"
+        @delete="emit('delete', $event)"
+      />
     </div>
   </aside>
 </template>
@@ -22,6 +28,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: "open", payload: ActiveFile): void;
+  (event: "rename", payload: { node: FileNode; name: string }): void;
+  (event: "delete", node: FileNode): void;
 }>();
 
 const fileCount = computed(() => {

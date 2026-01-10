@@ -2,7 +2,11 @@
   <section class="bottom-panel panel">
     <div class="panel-header">
       <div class="panel-title">任务日志</div>
-      <div class="muted">{{ activeLabel }}</div>
+      <div class="task-meta">
+        <span v-if="isRunning" class="progress-indicator" aria-hidden="true"></span>
+        <span class="muted">{{ activeLabel }}</span>
+        <span v-if="elapsedLabel" class="muted">· {{ elapsedLabel }}</span>
+      </div>
     </div>
     <div class="log-body">
       <div v-if="activeOutputs.length" class="output-strip">
@@ -17,7 +21,8 @@
         </button>
       </div>
       <div v-if="!activeTask" class="empty-state">未选择任务。</div>
-      <div v-else class="log-stream">
+      <div v-else class="log-stream" ref="logRef">
+        <div v-if="activeTask.error" class="log-error">{{ activeTask.error }}</div>
         <div class="log-line" v-for="(line, index) in activeTask.logs" :key="index">
           {{ line }}
         </div>
@@ -39,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { TaskItem } from "@/stores/task";
 
 const props = defineProps<{
@@ -60,6 +65,10 @@ const statusLabel = (status: string) => {
   return map[status] ?? "未知状态";
 };
 
+const logRef = ref<HTMLDivElement | null>(null);
+const now = ref(Date.now());
+let timer: number | null = null;
+
 const activeLabel = computed(() => {
   if (!props.activeTask) {
     return "空闲";
@@ -68,6 +77,26 @@ const activeLabel = computed(() => {
 });
 
 const activeOutputs = computed(() => props.activeTask?.outputFiles ?? []);
+
+const isRunning = computed(() =>
+  props.activeTask ? ["running", "pending"].includes(props.activeTask.status) : false
+);
+
+const elapsedLabel = computed(() => {
+  const task = props.activeTask;
+  if (!task?.startedAt) {
+    return "";
+  }
+  const end = task.completedAt ?? now.value;
+  const elapsedMs = Math.max(0, end - task.startedAt);
+  const seconds = Math.floor(elapsedMs / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}m ${remainder}s`;
+});
 
 const formatOutput = (fileKey: string) => {
   const map: Record<string, string> = {
@@ -86,6 +115,38 @@ const formatOutput = (fileKey: string) => {
   }
   return fileKey;
 };
+
+watch(
+  () => props.activeTask?.logs.length,
+  async () => {
+    await nextTick();
+    if (logRef.value) {
+      logRef.value.scrollTop = logRef.value.scrollHeight;
+    }
+  }
+);
+
+watch(
+  () => isRunning.value,
+  (running) => {
+    if (timer) {
+      window.clearInterval(timer);
+      timer = null;
+    }
+    if (running) {
+      timer = window.setInterval(() => {
+        now.value = Date.now();
+      }, 1000);
+    }
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => {
+  if (timer) {
+    window.clearInterval(timer);
+  }
+});
 </script>
 
 <style scoped>
@@ -112,6 +173,16 @@ const formatOutput = (fileKey: string) => {
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.log-error {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ffd1d1;
+  font-size: 12px;
 }
 
 .log-line {
@@ -159,6 +230,21 @@ const formatOutput = (fileKey: string) => {
   overflow-x: auto;
 }
 
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.progress-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(126, 91, 255, 0.3);
+  border-top-color: var(--accent-bright);
+  animation: spin 1s linear infinite;
+}
+
 .task-chip {
   border-radius: 999px;
   border: 1px solid transparent;
@@ -199,5 +285,11 @@ const formatOutput = (fileKey: string) => {
 .task-status.success {
   background: rgba(34, 197, 94, 0.2);
   color: #7ef1a4;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

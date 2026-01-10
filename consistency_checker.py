@@ -35,7 +35,7 @@ def check_consistency(
     plot_arcs: str = "",
     interface_format: str = "OpenAI",
     max_tokens: int = 2048,
-    timeout: int = 600
+    timeout: int = 900
 ) -> str:
     """
     调用模型做简单的一致性检查。可扩展更多提示或校验规则。

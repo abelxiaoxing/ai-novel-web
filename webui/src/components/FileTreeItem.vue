@@ -7,9 +7,20 @@
         folder: node.type === 'folder',
       }"
       @click="handleClick"
+      @contextmenu.prevent="handleContextMenu"
     >
       <span class="chevron" v-if="node.type === 'folder'">{{ expanded ? '▾' : '▸' }}</span>
-      <span class="file-name">{{ displayName }}</span>
+      <span v-if="!isRenaming" class="file-name">{{ displayName }}</span>
+      <input
+        v-else
+        ref="renameInput"
+        class="rename-input"
+        :value="renameValue"
+        @input="onRenameInput"
+        @keydown.enter.prevent="confirmRename"
+        @keydown.esc.prevent="cancelRename"
+        @blur="confirmRename"
+      />
     </div>
     <ul v-if="node.type === 'folder' && expanded" class="file-children">
       <FileTreeItem
@@ -17,28 +28,39 @@
         :key="child.id"
         :node="child"
         :active-path="activePath"
+        :renaming-id="renamingId"
         @open="emit('open', $event)"
+        @rename="emit('rename', $event)"
+        @cancel-rename="emit('cancel-rename')"
+        @context="emit('context', $event)"
       />
     </ul>
   </li>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import type { FileNode, ActiveFile } from "@/stores/project";
 import FileTreeItem from "@/components/FileTreeItem.vue";
 
 const props = defineProps<{
   node: FileNode;
   activePath?: string | null;
+  renamingId?: string | null;
 }>();
 
 const emit = defineEmits<{
   (event: "open", payload: ActiveFile): void;
+  (event: "rename", payload: { node: FileNode; name: string }): void;
+  (event: "cancel-rename"): void;
+  (event: "context", payload: { node: FileNode; x: number; y: number }): void;
 }>();
 
 const expanded = ref(true);
 const isActive = computed(() => props.activePath === props.node.path);
+const isRenaming = computed(() => props.renamingId === props.node.id);
+const renameValue = ref(props.node.name);
+const renameInput = ref<HTMLInputElement | null>(null);
 const displayName = computed(() => {
   const name = props.node.name;
   const staticMap: Record<string, string> = {
@@ -68,6 +90,9 @@ const handleClick = () => {
     expanded.value = !expanded.value;
     return;
   }
+  if (isRenaming.value) {
+    return;
+  }
 
   emit("open", {
     path: props.node.path,
@@ -76,6 +101,46 @@ const handleClick = () => {
     chapterNumber: props.node.chapterNumber,
   });
 };
+
+const handleContextMenu = (event: MouseEvent) => {
+  if (props.node.type === "folder") {
+    return;
+  }
+  emit("context", { node: props.node, x: event.clientX, y: event.clientY });
+};
+
+const onRenameInput = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  renameValue.value = target.value;
+};
+
+const confirmRename = () => {
+  if (!isRenaming.value) {
+    return;
+  }
+  const next = renameValue.value.trim();
+  if (!next || next === props.node.name) {
+    emit("cancel-rename");
+    return;
+  }
+  emit("rename", { node: props.node, name: next });
+};
+
+const cancelRename = () => {
+  emit("cancel-rename");
+};
+
+watch(
+  () => isRenaming.value,
+  async (value) => {
+    if (value) {
+      renameValue.value = props.node.name;
+      await nextTick();
+      renameInput.value?.focus();
+      renameInput.value?.select();
+    }
+  }
+);
 </script>
 
 <style scoped>
@@ -114,5 +179,15 @@ const handleClick = () => {
   list-style: none;
   padding-left: 12px;
   margin: 4px 0 0 0;
+}
+
+.rename-input {
+  flex: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(126, 91, 255, 0.4);
+  background: rgba(15, 11, 22, 0.6);
+  color: var(--text);
+  font-size: 12px;
 }
 </style>

@@ -5,6 +5,12 @@ export async function getTaskStatus(taskId: string) {
   return apiFetch<TaskStatusResponse>(`/api/tasks/${taskId}`);
 }
 
+export async function cancelTask(taskId: string) {
+  return apiFetch<void>(`/api/tasks/${taskId}/cancel`, {
+    method: "POST",
+  });
+}
+
 export function getTaskStreamUrl(taskId: string) {
   return buildUrl(`/api/tasks/${taskId}/stream`);
 }

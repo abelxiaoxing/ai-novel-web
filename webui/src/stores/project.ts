@@ -9,6 +9,8 @@ import {
   listChapters,
   listProjectFiles,
   listProjects,
+  deleteChapter,
+  renameChapter,
   updateChapter,
   updateProjectFile,
 } from "@/api/projects";
@@ -254,6 +256,43 @@ export const useProjectStore = defineStore("project", {
         }
       } catch (error) {
         this.error = error instanceof Error ? error.message : "保存文件失败";
+      } finally {
+        this.loading = false;
+      }
+    },
+    async deleteChapterFile(chapterNumber: number) {
+      const projectId = this.currentProject?.id;
+      if (!projectId) {
+        return;
+      }
+      this.loading = true;
+      this.error = null;
+      try {
+        await deleteChapter(projectId, chapterNumber);
+        if (this.activeFile?.chapterNumber === chapterNumber) {
+          this.resetActiveFile();
+        }
+        await this.refreshFileTree(projectId);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : "删除章节失败";
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    async renameChapterFile(chapterNumber: number, newNumber: number) {
+      const projectId = this.currentProject?.id;
+      if (!projectId) {
+        return;
+      }
+      this.loading = true;
+      this.error = null;
+      try {
+        await renameChapter(projectId, chapterNumber, newNumber);
+        await this.refreshFileTree(projectId);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : "重命名章节失败";
+        throw error;
       } finally {
         this.loading = false;
       }

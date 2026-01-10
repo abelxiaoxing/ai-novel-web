@@ -65,7 +65,7 @@ def Novel_architecture_generate(
     user_guidance: str = "",  # 新增参数
     temperature: float = 0.7,
     max_tokens: int = 2048,
-    timeout: int = 600
+    timeout: int = 900
 ) -> None:
     """
     依次调用:

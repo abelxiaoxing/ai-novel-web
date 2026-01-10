@@ -7,6 +7,7 @@ import logging
 import re
 import time
 import traceback
+from json import JSONDecodeError
 logging.basicConfig(
     filename='app.log',      # 日志文件名
     filemode='a',            # 追加模式（'w' 会覆盖）
@@ -49,6 +50,9 @@ def debug_log(prompt: str, response_content: str):
     )
 
 def _is_retryable_error(error: Exception) -> bool:
+    if isinstance(error, JSONDecodeError):
+        return True
+
     message = str(error).lower()
     non_retry_signals = [
         "invalid api key",
@@ -69,6 +73,8 @@ def _is_retryable_error(error: Exception) -> bool:
         return False
 
     retry_signals = [
+        "jsondecodeerror",
+        "expecting value",
         "timeout",
         "timed out",
         "rate limit",
@@ -89,7 +95,7 @@ def _retry_backoff_seconds(attempt: int, base: float = 2.0, max_sleep: float = 3
     return min(max_sleep, base * (2 ** (attempt - 1)))
 
 
-def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 5) -> str:
+def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 7) -> str:
     """调用 LLM 并清理返回结果"""
     print("\n" + "="*50)
     print("发送到 LLM 的提示词:")

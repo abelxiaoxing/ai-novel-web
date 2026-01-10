@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 import tempfile
-from typing import Any, Dict, List
+import time
+from typing import Any, Callable, Dict, List, Optional
 
 from consistency_checker import check_consistency
 from novel_generator.architecture import Novel_architecture_generate
@@ -36,7 +37,7 @@ def generate_architecture(
         user_guidance=payload.get("user_guidance", ""),
         temperature=llm_config.get("temperature", 0.7),
         max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 600),
+        timeout=llm_config.get("timeout", 900),
     )
     log("Architecture completed.")
     return {"output_files": ["architecture", "character_state"]}
@@ -59,7 +60,7 @@ def generate_blueprint(
         user_guidance=payload.get("user_guidance", ""),
         temperature=llm_config.get("temperature", 0.7),
         max_tokens=llm_config.get("max_tokens", 4096),
-        timeout=llm_config.get("timeout", 600),
+        timeout=llm_config.get("timeout", 900),
     )
     log("Blueprint completed.")
     return {"output_files": ["directory"]}
@@ -96,7 +97,7 @@ def build_prompt(
         embedding_retrieval_k=retrieval_k,
         interface_format=llm_config["interface_format"],
         max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 600),
+        timeout=llm_config.get("timeout", 900),
     )
     log("Prompt ready.")
     return {"result": {"prompt_text": prompt_text}}
@@ -133,7 +134,7 @@ def generate_draft(
         embedding_retrieval_k=retrieval_k,
         interface_format=llm_config["interface_format"],
         max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 600),
+        timeout=llm_config.get("timeout", 900),
         custom_prompt_text=payload.get("custom_prompt_text"),
     )
     log("Draft completed.")
@@ -165,7 +166,7 @@ def finalize(
         embedding_model_name=embedding_config["model_name"],
         interface_format=llm_config["interface_format"],
         max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 600),
+        timeout=llm_config.get("timeout", 900),
     )
     log("Finalization completed.")
     summary = read_file(os.path.join(project_root, "global_summary.txt"))
@@ -191,7 +192,7 @@ def enrich(
         temperature=llm_config.get("temperature", 0.7),
         interface_format=llm_config["interface_format"],
         max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 600),
+        timeout=llm_config.get("timeout", 900),
     )
     log("Enrich completed.")
     return {"result": {"chapter_text": enriched}}
@@ -203,36 +204,53 @@ def batch_generate(
     llm_config: Dict[str, Any],
     embedding_config: Dict[str, Any],
     log,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     start_chapter = payload["start_chapter"]
     end_chapter = payload["end_chapter"]
     word_number = payload["word_number"]
     min_word = payload.get("min_word", 0)
     auto_enrich = payload.get("auto_enrich", False)
+    resume_existing = payload.get("resume_existing", True)
+    delay_seconds = payload.get("delay_seconds", 0) or 0
     results: List[Dict[str, Any]] = []
 
     for chapter_number in range(start_chapter, end_chapter + 1):
+        if should_cancel and should_cancel():
+            log("Batch cancelled.")
+            raise RuntimeError("任务已取消")
         log(f"Drafting chapter {chapter_number}...")
         retrieval_k = payload.get("retrieval_k")
         if retrieval_k is None:
             retrieval_k = embedding_config.get("retrieval_k", 2)
-        chapter_payload = {
-            "novel_number": chapter_number,
-            "word_number": word_number,
-            "characters_involved": payload.get("characters_involved", ""),
-            "key_items": payload.get("key_items", ""),
-            "scene_location": payload.get("scene_location", ""),
-            "time_constraint": payload.get("time_constraint", ""),
-            "user_guidance": payload.get("user_guidance", ""),
-            "retrieval_k": retrieval_k,
-        }
-        chapter_text = generate_draft(
-            project_root,
-            chapter_payload,
-            llm_config,
-            embedding_config,
-            log,
-        )["result"]["chapter_text"]
+        chapter_path = resolve_chapter_path(project_root, chapter_number)
+        chapter_text = ""
+        did_generate = False
+        if resume_existing:
+            existing_text = read_file(chapter_path)
+            if existing_text.strip():
+                log(f"Chapter {chapter_number} already exists, skipping generation.")
+                chapter_text = existing_text
+
+        if not chapter_text:
+            chapter_payload = {
+                "novel_number": chapter_number,
+                "word_number": word_number,
+                "characters_involved": payload.get("characters_involved", ""),
+                "key_items": payload.get("key_items", ""),
+                "scene_location": payload.get("scene_location", ""),
+                "time_constraint": payload.get("time_constraint", ""),
+                "user_guidance": payload.get("user_guidance", ""),
+                "retrieval_k": retrieval_k,
+            }
+            chapter_text = generate_draft(
+                project_root,
+                chapter_payload,
+                llm_config,
+                embedding_config,
+                log,
+            )["result"]["chapter_text"]
+            did_generate = True
 
         if auto_enrich and min_word and len(chapter_text) < min_word:
             log(f"Enriching chapter {chapter_number} for length...")
@@ -245,14 +263,16 @@ def batch_generate(
                 temperature=llm_config.get("temperature", 0.7),
                 interface_format=llm_config["interface_format"],
                 max_tokens=llm_config.get("max_tokens", 2048),
-                timeout=llm_config.get("timeout", 600),
+                timeout=llm_config.get("timeout", 900),
             )
-            chapter_path = resolve_chapter_path(project_root, chapter_number)
             os.makedirs(os.path.dirname(chapter_path), exist_ok=True)
             save_string_to_txt(enriched, chapter_path)
             chapter_text = enriched
+            did_generate = True
 
         results.append({"chapter": chapter_number, "length": len(chapter_text)})
+        if delay_seconds and did_generate and chapter_number < end_chapter:
+            time.sleep(delay_seconds)
 
     log("Batch completed.")
     return {"result": {"chapters": results}}
@@ -276,7 +296,7 @@ def run_consistency_check(
         plot_arcs=payload.get("plot_arcs", ""),
         interface_format=llm_config["interface_format"],
         max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 600),
+        timeout=llm_config.get("timeout", 900),
     )
     log("Consistency check completed.")
     return {"result": {"result_text": result_text}}

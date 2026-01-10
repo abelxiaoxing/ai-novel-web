@@ -56,7 +56,7 @@ def summarize_recent_chapters(
     novel_number: int,            # 新增参数
     chapter_info: dict,           # 新增参数
     next_chapter_info: dict,      # 新增参数
-    timeout: int = 600
+    timeout: int = 900
 ) -> str:  # 修改返回值类型为 str，不再是 tuple
     """
     根据前三章内容生成当前章节的精准摘要。
@@ -229,7 +229,7 @@ def get_filtered_knowledge_context(
     chapter_info: dict,
     retrieved_texts: list,
     max_tokens: int = 2048,
-    timeout: int = 600
+    timeout: int = 900
 ) -> str:
     """优化后的知识过滤处理"""
     if not retrieved_texts:
@@ -296,7 +296,7 @@ def build_chapter_prompt(
     embedding_retrieval_k: int = 2,
     interface_format: str = "openai",
     max_tokens: int = 2048,
-    timeout: int = 600
+    timeout: int = 900
 ) -> str:
     """
     构造当前章节的请求提示词（完整实现版）
@@ -537,7 +537,7 @@ def generate_chapter_draft(
     embedding_retrieval_k: int = 2,
     interface_format: str = "openai",
     max_tokens: int = 2048,
-    timeout: int = 600,
+    timeout: int = 900,
     custom_prompt_text: str = None
 ) -> str:
     """

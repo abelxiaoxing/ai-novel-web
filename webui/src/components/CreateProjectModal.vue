@@ -10,6 +10,10 @@
         <input class="input-field" v-model="form.name" />
       </label>
       <label class="field">
+        <span class="field-label">主题</span>
+        <input class="input-field" v-model="form.topic" />
+      </label>
+      <label class="field">
         <span class="field-label">题材类型</span>
         <input class="input-field" v-model="form.genre" />
       </label>
@@ -37,6 +41,7 @@ import ModalShell from "@/components/ModalShell.vue";
 
 const form = reactive({
   name: "",
+  topic: "",
   genre: "",
   num_chapters: "",
   word_number: "",

@@ -14,9 +14,24 @@
       </div>
     </header>
 
+    <section class="project-controls">
+      <label class="search-field">
+        <span class="field-label">搜索项目</span>
+        <input class="input-field" v-model="searchQuery" placeholder="输入项目名称" />
+      </label>
+      <label class="sort-field">
+        <span class="field-label">排序</span>
+        <select class="select-field" v-model="sortKey">
+          <option value="name">名称</option>
+          <option value="created_at">创建时间</option>
+          <option value="updated_at">更新时间</option>
+        </select>
+      </label>
+    </section>
+
     <section class="project-grid">
       <ProjectCard
-        v-for="(project, index) in projectStore.projects"
+        v-for="(project, index) in visibleProjects"
         :key="project.id"
         :project="project"
         class="stagger-item"
@@ -29,10 +44,7 @@
       </div>
     </section>
 
-    <div v-if="projectStore.error" class="error-banner">
-      {{ projectStore.error }}
-    </div>
-    <div v-else-if="projectStore.loading" class="loading-banner">
+    <div v-if="projectStore.loading" class="loading-banner">
       正在加载项目...
     </div>
 
@@ -45,15 +57,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useProjectStore } from "@/stores/project";
+import { useToastStore } from "@/stores/toast";
 import ProjectCard from "@/components/ProjectCard.vue";
 import CreateProjectModal from "@/components/CreateProjectModal.vue";
 
 const router = useRouter();
 const projectStore = useProjectStore();
+const toastStore = useToastStore();
 const showCreate = ref(false);
+const searchQuery = ref("");
+const sortKey = ref("name");
+const sortStorageKey = "ainovel:project-sort";
 
 const refresh = () => {
   projectStore.fetchProjects();
@@ -91,7 +108,61 @@ const createProject = async (payload: Record<string, string>) => {
 
 onMounted(() => {
   projectStore.fetchProjects();
+  if (typeof window !== "undefined") {
+    const saved = window.localStorage.getItem(sortStorageKey);
+    if (saved) {
+      sortKey.value = saved;
+    }
+  }
 });
+
+const normalizeSortValue = (value?: string) => {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const visibleProjects = computed(() => {
+  const keyword = searchQuery.value.trim().toLowerCase();
+  const filtered = projectStore.projects.filter((project) => {
+    if (!keyword) {
+      return true;
+    }
+    return project.name.toLowerCase().includes(keyword);
+  });
+  return [...filtered].sort((a, b) => {
+    switch (sortKey.value) {
+      case "created_at":
+        return normalizeSortValue(b.created_at) - normalizeSortValue(a.created_at);
+      case "updated_at":
+        return normalizeSortValue(b.updated_at) - normalizeSortValue(a.updated_at);
+      case "name":
+      default:
+        return a.name.localeCompare(b.name, "zh-CN");
+    }
+  });
+});
+
+watch(
+  () => sortKey.value,
+  (value) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(sortStorageKey, value);
+    }
+  }
+);
+
+watch(
+  () => projectStore.error,
+  (error) => {
+    if (error) {
+      toastStore.error(error);
+      projectStore.error = null;
+    }
+  }
+);
 </script>
 
 <style scoped>
@@ -133,19 +204,34 @@ onMounted(() => {
   gap: 20px;
 }
 
+.project-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.search-field,
+.sort-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.field-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
 .empty-state {
   border: 1px dashed rgba(229, 225, 245, 0.2);
   border-radius: var(--radius-lg);
   padding: 40px;
   text-align: center;
   color: var(--text-muted);
-}
-
-.error-banner {
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: rgba(239, 68, 68, 0.16);
-  border: 1px solid rgba(239, 68, 68, 0.35);
 }
 
 .loading-banner {

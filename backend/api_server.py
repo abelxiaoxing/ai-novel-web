@@ -35,6 +35,7 @@ from utils import read_file, save_string_to_txt
 
 class ProjectCreateRequest(BaseModel):
     name: Optional[str] = Field(default=None)
+    topic: Optional[str] = Field(default=None)
     genre: Optional[str] = Field(default=None)
     num_chapters: Optional[int] = Field(default=None)
     word_number: Optional[int] = Field(default=None)
@@ -43,6 +44,10 @@ class ProjectCreateRequest(BaseModel):
 
 class UpdateFileRequest(BaseModel):
     content: str = ""
+
+
+class RenameChapterRequest(BaseModel):
+    new_number: int
 
 
 class TaskResponse(BaseModel):
@@ -100,6 +105,8 @@ class BatchRequest(BaseModel):
     word_number: int
     min_word: Optional[int] = 0
     auto_enrich: Optional[bool] = False
+    resume_existing: Optional[bool] = True
+    delay_seconds: Optional[float] = 0
     characters_involved: Optional[str] = ""
     key_items: Optional[str] = ""
     scene_location: Optional[str] = ""
@@ -165,6 +172,7 @@ def create_project(payload: ProjectCreateRequest) -> Dict[str, Any]:
     name = (payload.name or "Untitled").strip() or "Untitled"
     project = project_store.create_project(
         name=name,
+        topic=payload.topic,
         genre=payload.genre,
         num_chapters=payload.num_chapters,
         word_number=payload.word_number,
@@ -251,6 +259,35 @@ def update_chapter(project_id: str, chapter_number: int, payload: UpdateFileRequ
     return {"ok": True}
 
 
+@app.delete("/api/projects/{project_id}/chapters/{chapter_number}")
+def delete_chapter(project_id: str, chapter_number: int) -> Dict[str, Any]:
+    project_root = _get_project_root(project_id)
+    path = resolve_chapter_path(project_root, chapter_number)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Chapter not found.")
+    os.remove(path)
+    return {"ok": True}
+
+
+@app.post("/api/projects/{project_id}/chapters/{chapter_number}/rename")
+def rename_chapter(
+    project_id: str, chapter_number: int, payload: RenameChapterRequest
+) -> Dict[str, Any]:
+    project_root = _get_project_root(project_id)
+    current_path = resolve_chapter_path(project_root, chapter_number)
+    if not os.path.exists(current_path):
+        raise HTTPException(status_code=404, detail="Chapter not found.")
+    new_number = payload.new_number
+    if new_number <= 0:
+        raise HTTPException(status_code=400, detail="Invalid chapter number.")
+    new_path = resolve_chapter_path(project_root, new_number)
+    if os.path.exists(new_path):
+        raise HTTPException(status_code=400, detail="Target chapter already exists.")
+    os.makedirs(os.path.dirname(new_path), exist_ok=True)
+    os.rename(current_path, new_path)
+    return {"ok": True}
+
+
 @app.get("/api/projects/{project_id}/state")
 def get_project_state(project_id: str) -> Dict[str, Any]:
     project_root = _get_project_root(project_id)
@@ -279,6 +316,16 @@ def get_task_status(task_id: str) -> Dict[str, Any]:
         "error": task.get("error"),
         "output_files": task.get("output_files", []),
     }
+
+
+@app.post("/api/tasks/{task_id}/cancel")
+def cancel_task(task_id: str) -> Dict[str, Any]:
+    task = task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    if not task_manager.cancel_task(task_id):
+        raise HTTPException(status_code=400, detail="Task already completed.")
+    return {"ok": True}
 
 
 @app.get("/api/tasks/{task_id}/stream")
@@ -400,16 +447,20 @@ def api_batch(project_id: str, payload: BatchRequest) -> TaskResponse:
     project_root = _get_project_root(project_id)
     llm_config = _resolve_llm_config("batch", payload.llm_config_name)
     embedding_config = _resolve_embedding_config(payload.embedding_config_name)
-    task_id = task_manager.create_task(
-        "batch",
-        lambda log: batch_generate(
+    task_id_holder = [""]
+
+    def runner(log):
+        return batch_generate(
             project_root,
             payload.model_dump(),
             llm_config,
             embedding_config,
             log,
-        ),
-    )
+            lambda: task_manager.is_cancelled(task_id_holder[0]),
+        )
+
+    task_id = task_manager.create_task("batch", runner)
+    task_id_holder[0] = task_id
     return TaskResponse(task_id=task_id)
 
 

@@ -32,7 +32,7 @@ def finalize_chapter(
     embedding_model_name: str,
     interface_format: str,
     max_tokens: int,
-    timeout: int = 600
+    timeout: int = 900
 ):
     """
     对指定章节做最终处理：更新前文摘要、更新角色状态、插入向量库等。
@@ -103,7 +103,7 @@ def enrich_chapter_text(
     temperature: float,
     interface_format: str,
     max_tokens: int,
-    timeout: int=600
+    timeout: int = 900
 ) -> str:
     """
     对章节文本进行扩写，使其更接近 word_number 字数，保持剧情连贯。

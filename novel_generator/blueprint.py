@@ -17,7 +17,12 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-def compute_chunk_size(number_of_chapters: int, max_tokens: int) -> int:
+
+BLUEPRINT_MAX_TOKENS_CAP = 8192
+BLUEPRINT_MAX_CHUNK_SIZE = 30
+
+
+def compute_chunk_size(number_of_chapters: int, max_tokens: int, max_chunk_size: int = BLUEPRINT_MAX_CHUNK_SIZE) -> int:
     """
     基于“每章约100 tokens”的粗略估算，
     再结合当前max_tokens，计算分块大小：
@@ -30,6 +35,8 @@ def compute_chunk_size(number_of_chapters: int, max_tokens: int) -> int:
     chunk_size = ratio_rounded_to_10 - 10
     if chunk_size < 1:
         chunk_size = 1
+    if max_chunk_size > 0 and chunk_size > max_chunk_size:
+        chunk_size = max_chunk_size
     if chunk_size > number_of_chapters:
         chunk_size = number_of_chapters
     return chunk_size
@@ -57,7 +64,7 @@ def Chapter_blueprint_generate(
     user_guidance: str = "",  # 新增参数
     temperature: float = 0.7,
     max_tokens: int = 4096,
-    timeout: int = 600
+    timeout: int = 900
 ) -> None:
     """
     若 Novel_directory.txt 已存在且内容非空，则表示可能是之前的部分生成结果；
@@ -77,6 +84,15 @@ def Chapter_blueprint_generate(
     if not architecture_text:
         logging.warning("Novel_architecture.txt is empty.")
         return
+
+    effective_max_tokens = min(max_tokens, BLUEPRINT_MAX_TOKENS_CAP)
+    if effective_max_tokens != max_tokens:
+        logging.info(
+            "Capping blueprint max_tokens from %s to %s to reduce request size.",
+            max_tokens,
+            effective_max_tokens,
+        )
+    max_tokens = effective_max_tokens
 
     llm_adapter = create_llm_adapter(
         interface_format=interface_format,
