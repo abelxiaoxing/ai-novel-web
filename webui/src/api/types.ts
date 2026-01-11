@@ -52,6 +52,13 @@ export interface WorkflowSnapshot {
   finalizedChapters?: number[];
 }
 
+export interface BatchTaskState {
+  taskId: string;
+  start: number;
+  end: number;
+  delaySeconds: number;
+}
+
 export interface ProjectState {
   form?: WorkbenchFormState;
   activeFile?: {
@@ -60,6 +67,7 @@ export interface ProjectState {
     chapterNumber?: number;
   };
   workflow?: WorkflowSnapshot;
+  batchTask?: BatchTaskState;
 }
 
 export type TaskStatus = "pending" | "running" | "success" | "failed";

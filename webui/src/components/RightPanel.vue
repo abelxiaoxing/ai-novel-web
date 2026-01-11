@@ -119,7 +119,7 @@
           class="btn btn-primary"
           :disabled="buttonStates.draftDisabled"
           :title="disabledTooltip('draft')"
-          @click="$emit('run', 'draft')"
+          @click="$emit('run', 'draft-stream')"
         >
           生成草稿
         </button>

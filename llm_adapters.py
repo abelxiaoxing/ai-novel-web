@@ -40,6 +40,12 @@ class BaseLLMAdapter:
     def invoke(self, prompt: str) -> str:
         raise NotImplementedError("Subclasses must implement .invoke(prompt) method.")
 
+    def stream(self, prompt: str):
+        """流式输出，返回生成器，逐块返回文本"""
+        # 默认实现：直接返回完整结果
+        result = self.invoke(prompt)
+        yield result
+
 class DeepSeekAdapter(BaseLLMAdapter):
     """
     适配官方/OpenAI兼容接口（使用 langchain.ChatOpenAI）

@@ -7,6 +7,10 @@
   height: 100vh;
 }
 
+.app-grid.with-progress {
+  padding-top: 50px;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--panel-border);

@@ -1,6 +1,14 @@
 <template>
   <div class="workbench-view">
-    <div class="app-grid">
+    <GlobalProgressBar
+      :visible="batchRunning"
+      :label="batchProgressText"
+      :percent="batchProgressPercent"
+      :show-cancel="true"
+      :cancel-disabled="batchCancelRequested"
+      @cancel="cancelBatch"
+    />
+    <div class="app-grid" :class="{ 'with-progress': batchRunning }">
       <TopBar
         :project-name="projectStore.currentProject?.name"
         :status-label="statusLabel"
@@ -112,37 +120,21 @@
       @confirm="usePrompt"
     />
 
-    <BatchGenerateModal
-      v-if="batchModalOpen"
-      :start-chapter="batchDefaults.start"
-      :end-chapter="batchDefaults.end"
-      :delay-seconds="batchConfig.delaySeconds"
-      :running="batchRunning"
-      :progress-text="batchProgressText"
-      :progress-percent="batchProgressPercent"
-      :summary="batchSummary"
-      :error="batchError"
-      :cancel-requested="batchCancelRequested"
-      @submit="startBatch"
-      @cancel="cancelBatch"
-      @close="batchModalOpen = false"
-    />
-
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ActivityBar from "@/components/ActivityBar.vue";
 import BottomPanel from "@/components/BottomPanel.vue";
-import BatchGenerateModal from "@/components/BatchGenerateModal.vue";
 import EditorPane from "@/components/EditorPane.vue";
+import GlobalProgressBar from "@/components/GlobalProgressBar.vue";
 import PromptModal from "@/components/PromptModal.vue";
 import RightPanel, { type WorkbenchForm } from "@/components/RightPanel.vue";
 import Sidebar from "@/components/Sidebar.vue";
 import TopBar from "@/components/TopBar.vue";
-import type { ProjectState, WorkbenchFormState, WorkflowSnapshot } from "@/api/types";
+import type { ProjectState, WorkbenchFormState, WorkflowSnapshot, BatchTaskState } from "@/api/types";
 import { getProjectFile, getProjectState, updateProjectState } from "@/api/projects";
 import { useConfigStore } from "@/stores/config";
 import { useProjectStore, type ActiveFile, type FileNode } from "@/stores/project";
@@ -213,7 +205,6 @@ const { markAsOverridden } = useChapterInfo({
   },
 });
 
-const batchModalOpen = ref(false);
 const batchRunning = ref(false);
 const batchCancelRequested = ref(false);
 const batchProgress = ref({ current: 0, total: 0 });
@@ -222,6 +213,8 @@ const batchError = ref("");
 const batchTaskId = ref<string | null>(null);
 const batchConfig = ref({ start: 1, end: 1, delaySeconds: 0 });
 const workflowSnapshot = ref<WorkflowSnapshot>({ finalizedChapters: [] });
+let batchRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let batchRefreshPending = false;
 
 const localStatePrefix = "ainovel:project-state:";
 
@@ -593,6 +586,14 @@ const queueSaveState = () => {
         }
       : undefined,
     workflow: { ...workflowSnapshot.value },
+    batchTask: batchRunning.value && batchTaskId.value
+      ? {
+          taskId: batchTaskId.value,
+          start: batchConfig.value.start,
+          end: batchConfig.value.end,
+          delaySeconds: batchConfig.value.delaySeconds,
+        }
+      : undefined,
   };
   saveLocalState(projectId, payload);
   saveTimer = setTimeout(async () => {
@@ -602,6 +603,30 @@ const queueSaveState = () => {
       console.warn("Failed to save project state.", error);
     }
   }, 500);
+};
+
+const startBatchRefresh = () => {
+  if (batchRefreshTimer) {
+    clearInterval(batchRefreshTimer);
+  }
+  batchRefreshTimer = window.setInterval(async () => {
+    if (!batchRunning.value || batchRefreshPending) {
+      return;
+    }
+    batchRefreshPending = true;
+    try {
+      await projectStore.refreshFileTree();
+    } finally {
+      batchRefreshPending = false;
+    }
+  }, 2000);
+};
+
+const stopBatchRefresh = () => {
+  if (batchRefreshTimer) {
+    clearInterval(batchRefreshTimer);
+    batchRefreshTimer = null;
+  }
 };
 
 const loadProjectState = async () => {
@@ -620,6 +645,25 @@ const loadProjectState = async () => {
   }
   const state = mergeProjectState(remoteState, localState);
   workflowSnapshot.value = normalizeWorkflowSnapshot(state.workflow);
+  // Restore batch task state
+  if (state.batchTask?.taskId) {
+    const existingTask = taskStore.tasks.find((t) => t.id === state.batchTask!.taskId);
+    if (existingTask && (existingTask.status === "pending" || existingTask.status === "running")) {
+      batchTaskId.value = state.batchTask.taskId;
+      batchConfig.value = {
+        start: state.batchTask.start,
+        end: state.batchTask.end,
+        delaySeconds: state.batchTask.delaySeconds,
+      };
+      batchProgress.value = {
+        current: 0,
+        total: Math.max(0, state.batchTask.end - state.batchTask.start + 1),
+      };
+      batchRunning.value = true;
+      taskActionMap.set(state.batchTask.taskId, "batch");
+      parseBatchProgress(existingTask.logs);
+    }
+  }
   try {
     applyFormState(state.form);
     const activeFile = normalizeActiveFile(state.activeFile);
@@ -785,10 +829,9 @@ const runTask = async (
   }
 };
 
-const openBatchModal = () => {
-  batchModalOpen.value = true;
-  batchSummary.value = "";
-  batchError.value = "";
+const startBatchDirect = () => {
+  const defaults = batchDefaults.value;
+  startBatch({ start: defaults.start, end: defaults.end, delaySeconds: batchConfig.value.delaySeconds });
 };
 
 const startBatch = async (payload: { start: number; end: number; delaySeconds: number }) => {
@@ -831,6 +874,7 @@ const startBatch = async (payload: { start: number; end: number; delaySeconds: n
     return;
   }
   batchTaskId.value = taskId;
+  queueSaveState();
 };
 
 const cancelBatch = async () => {
@@ -906,7 +950,7 @@ const runAction = async (action: string) => {
       break;
     }
     case "batch":
-      openBatchModal();
+      startBatchDirect();
       break;
     case "draft":
       await runTask("生成草稿", () => generateDraft(projectId, payloadBase), "draft");
@@ -1116,6 +1160,7 @@ watch(
             batchCancelRequested.value = false;
             batchProgress.value.current = batchProgress.value.total;
             batchSummary.value = buildBatchSummary(task);
+            queueSaveState();
           }
           const stepToastMap: Record<string, string> = {
             architecture: "架构已完成，下一步生成章节蓝图。",
@@ -1140,6 +1185,7 @@ watch(
             } else {
               batchError.value = task.error ?? "批量生成失败。";
             }
+            queueSaveState();
           }
           toastStore.error(message);
         }
@@ -1170,13 +1216,34 @@ watch(
 
 watch(
   () => batchTask.value?.logs,
-  (logs) => {
+  async (logs, oldLogs) => {
     if (!logs) {
       return;
     }
     parseBatchProgress(logs);
+    // Detect chapter completion, refresh file tree and open chapter
+    const oldLen = oldLogs?.length ?? 0;
+    for (let i = oldLen; i < logs.length; i++) {
+      const match = /\[CHAPTER_DONE\]\s*(\d+)/.exec(logs[i]);
+      if (match) {
+        const chapterNum = Number(match[1]);
+        await projectStore.refreshFileTree();
+        await openOutputFile(`chapter:${chapterNum}`);
+      }
+    }
   },
   { deep: true }
+);
+
+watch(
+  () => batchRunning.value,
+  (running) => {
+    if (running) {
+      startBatchRefresh();
+    } else {
+      stopBatchRefresh();
+    }
+  }
 );
 
 watch(form, () => queueSaveState(), { deep: true });
@@ -1185,6 +1252,8 @@ watch(
   () => projectStore.activeFile,
   () => queueSaveState()
 );
+
+onBeforeUnmount(() => stopBatchRefresh());
 
 watch(
   () => form.numberOfChapters,

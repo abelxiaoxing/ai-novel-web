@@ -20,27 +20,15 @@
         </label>
         <p v-if="formError" class="form-error">{{ formError }}</p>
       </div>
-      <div v-else class="progress-block">
-        <div class="progress-text">{{ progressText }}</div>
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: `${progressPercent}%` }"></div>
-        </div>
-        <p v-if="cancelRequested" class="muted">取消请求已发送，正在终止当前任务。</p>
+      <div v-else class="running-hint">
+        <p class="muted">批量生成进行中，进度显示在页面顶部。您可以关闭此窗口继续操作界面。</p>
       </div>
       <div v-if="summary" class="summary-box">{{ summary }}</div>
       <p v-if="error" class="form-error">{{ error }}</p>
     </div>
     <div class="action-row">
       <button class="btn btn-primary" @click="submit" :disabled="running">开始生成</button>
-      <button
-        v-if="running"
-        class="btn btn-ghost"
-        @click="$emit('cancel')"
-        :disabled="cancelRequested"
-      >
-        取消
-      </button>
-      <button class="btn btn-outline" @click="$emit('close')">关闭</button>
+      <button class="btn btn-outline" @click="$emit('close')">{{ running ? '最小化' : '关闭' }}</button>
     </div>
   </ModalShell>
 </template>
@@ -111,12 +99,23 @@ const submit = () => {
     return;
   }
   emit("submit", { start, end, delaySeconds });
+  emit("close");
 };
 
 const progressText = computed(() => props.progressText ?? "准备生成...");
 const progressPercent = computed(() => props.progressPercent ?? 0);
 const running = computed(() => props.running ?? false);
 const cancelRequested = computed(() => props.cancelRequested ?? false);
+
+watch(
+  () => running.value,
+  (next, prev) => {
+    if (next && !prev) {
+      emit("close");
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <style scoped>

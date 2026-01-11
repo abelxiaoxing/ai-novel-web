@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional
 from consistency_checker import check_consistency
 from novel_generator.architecture import Novel_architecture_generate
 from novel_generator.blueprint import Chapter_blueprint_generate
-from novel_generator.chapter import build_chapter_prompt, generate_chapter_draft
+from novel_generator.chapter import build_chapter_prompt, generate_chapter_draft, generate_chapter_draft_stream
 from novel_generator.finalization import enrich_chapter_text, finalize_chapter
 from novel_generator.knowledge import import_knowledge_file
 from novel_generator.vectorstore_utils import clear_vector_store
@@ -271,6 +271,7 @@ def batch_generate(
             did_generate = True
 
         results.append({"chapter": chapter_number, "length": len(chapter_text)})
+        log(f"[CHAPTER_DONE] {chapter_number}")
         if delay_seconds and did_generate and chapter_number < end_chapter:
             time.sleep(delay_seconds)
 
