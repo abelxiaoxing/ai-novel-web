@@ -2,167 +2,150 @@
   <aside class="right-panel panel">
     <div class="panel-header">
       <div class="panel-title">生成控制</div>
+      <span v-if="form.genre" class="genre-badge">{{ form.genre }}</span>
       <span class="muted">第 {{ workflowStore.currentChapter }}/{{ workflowStore.totalChapters }} 章</span>
     </div>
     <StepIndicator
-      :current-step="workflowStore.currentStep"
+      :current-step="activeStep"
       :completed-steps="workflowStore.completedSteps"
+      @step-click="handleStepClick"
     />
-    <div class="section">
-      <button class="section-toggle" type="button" @click="modelOpen = !modelOpen">
-        <span>模型配置</span>
-        <span class="muted">{{ modelSummary }}</span>
-        <span class="chevron">{{ modelOpen ? "▾" : "▸" }}</span>
+
+    <!-- Step 1: 架构生成 -->
+    <div class="step-section" :class="{ 'step-section--active': activeStep === 'architecture' }">
+      <button class="step-header" @click="toggleStep('architecture')">
+        <span class="step-header-title">
+          <span class="step-num">1</span>
+          架构生成
+          <span v-if="workflowStore.completedSteps.includes('architecture')" class="step-done">✓</span>
+        </span>
+        <span class="chevron">{{ activeStep === 'architecture' ? '▾' : '▸' }}</span>
       </button>
-      <div v-if="modelOpen" class="section-body">
+      <div v-if="activeStep === 'architecture'" class="step-body">
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">
+              章节数 <span class="required">*</span>
+            </span>
+            <input class="input-field" type="number" :value="form.numberOfChapters" @input="update('numberOfChapters', $event)" />
+          </label>
+          <label class="field">
+            <span class="field-label">
+              每章字数 <span class="required">*</span>
+            </span>
+            <input class="input-field" type="number" :value="form.wordNumber" @input="update('wordNumber', $event)" />
+          </label>
+        </div>
         <label class="field">
-          <span class="field-label">LLM 配置</span>
-          <select class="select-field" :value="form.llmConfigName" @change="update('llmConfigName', $event)">
-            <option value="">默认配置</option>
-            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">
-              {{ name }}
-            </option>
-          </select>
+          <span class="field-label">
+            创作指导
+            <span class="optional">(可选)</span>
+            <HelpTooltip text="对小说风格、情节走向的额外要求" />
+          </span>
+          <textarea class="textarea-field" rows="2" :value="form.userGuidance" @input="update('userGuidance', $event)" placeholder="例：主角性格要沉稳，不要后宫"></textarea>
         </label>
-        <label class="field">
-          <span class="field-label">Embedding 配置</span>
-          <select
-            class="select-field"
-            :value="form.embeddingConfigName"
-            @change="update('embeddingConfigName', $event)"
-          >
-            <option value="">默认配置</option>
-            <option v-for="name in configStore.embeddingConfigs" :key="name" :value="name">
-              {{ name }}
-            </option>
-          </select>
-        </label>
+        <div class="action-row">
+          <button class="btn btn-primary" :class="{ 'btn-highlight': workflowStore.nextStep === 'architecture' }" @click="$emit('run', 'architecture')">生成架构</button>
+        </div>
       </div>
     </div>
-    <div class="section">
-      <div class="section-title">项目基础</div>
-      <label class="field">
-        <span class="field-label">主题</span>
-        <input class="input-field" :value="form.topic" @input="update('topic', $event)" />
-      </label>
-      <label class="field">
-        <span class="field-label">题材类型</span>
-        <input class="input-field" :value="form.genre" @input="update('genre', $event)" />
-      </label>
-      <div class="field-row">
-        <label class="field">
-          <span class="field-label">章节数</span>
-          <input
-            class="input-field"
-            type="number"
-            :value="form.numberOfChapters"
-            @input="update('numberOfChapters', $event)"
-          />
-        </label>
-        <label class="field">
-          <span class="field-label">目标字数</span>
-          <input class="input-field" type="number" :value="form.wordNumber" @input="update('wordNumber', $event)" />
-        </label>
-      </div>
-      <label class="field">
-        <span class="field-label">用户指导</span>
-        <textarea class="textarea-field" rows="3" :value="form.userGuidance" @input="update('userGuidance', $event)"></textarea>
-      </label>
-      <div class="action-row">
-        <button class="btn btn-primary" @click="$emit('run', 'architecture')">生成架构</button>
-        <button
-          class="btn btn-ghost"
-          :disabled="buttonStates.blueprintDisabled"
-          :title="disabledTooltip('blueprint')"
-          @click="$emit('run', 'blueprint')"
-        >
-          生成章节蓝图
-        </button>
-      </div>
-    </div>
-    <div class="section">
-      <div class="section-title">章节草稿</div>
-      <div class="field-row">
-        <label class="field">
-          <span class="field-label">章节号</span>
-          <input class="input-field" type="number" :value="form.chapterNumber" @input="update('chapterNumber', $event)" />
-        </label>
-        <button class="btn btn-ghost btn-next-chapter" @click="$emit('next-chapter')" title="下一章">
-          下一章 →
-        </button>
-      </div>
-      <label class="field">
-        <span class="field-label">核心人物</span>
-        <input class="input-field" :value="form.charactersInvolved" @input="update('charactersInvolved', $event)" />
-      </label>
-      <label class="field">
-        <span class="field-label">关键道具</span>
-        <input class="input-field" :value="form.keyItems" @input="update('keyItems', $event)" />
-      </label>
-      <label class="field">
-        <span class="field-label">场景</span>
-        <input class="input-field" :value="form.sceneLocation" @input="update('sceneLocation', $event)" />
-      </label>
-      <label class="field">
-        <span class="field-label">时间约束</span>
-        <input class="input-field" :value="form.timeConstraint" @input="update('timeConstraint', $event)" />
-      </label>
-      <button class="section-toggle advanced-toggle" type="button" @click="advancedOpen = !advancedOpen">
-        <span>高级选项</span>
-        <span class="chevron">{{ advancedOpen ? "▾" : "▸" }}</span>
+
+    <!-- Step 2: 蓝图生成 -->
+    <div class="step-section" :class="{ 'step-section--active': activeStep === 'blueprint', 'step-section--disabled': !workflowStore.hasArchitecture }">
+      <button class="step-header" @click="toggleStep('blueprint')" :disabled="!workflowStore.hasArchitecture">
+        <span class="step-header-title">
+          <span class="step-num">2</span>
+          章节蓝图
+          <span v-if="workflowStore.completedSteps.includes('blueprint')" class="step-done">✓</span>
+        </span>
+        <span class="chevron">{{ activeStep === 'blueprint' ? '▾' : '▸' }}</span>
       </button>
-      <div v-if="advancedOpen" class="section-body">
-        <button class="btn btn-ghost" @click="$emit('run', 'preview-prompt')">预览/编辑提示词</button>
-      </div>
-      <div class="action-row">
-        <button
-          class="btn btn-primary"
-          :disabled="buttonStates.draftDisabled"
-          :title="disabledTooltip('draft')"
-          @click="$emit('run', 'draft-stream')"
-        >
-          生成草稿
-        </button>
-        <button
-          class="btn btn-ghost"
-          :disabled="buttonStates.draftDisabled"
-          :title="disabledTooltip('draft')"
-          @click="$emit('run', 'batch')"
-        >
-          批量生成
-        </button>
+      <div v-if="activeStep === 'blueprint'" class="step-body">
+        <p class="step-hint">基于架构自动生成每章的情节大纲</p>
+        <label class="field">
+          <span class="field-label">
+            蓝图指导
+            <span class="optional">(可选)</span>
+          </span>
+          <textarea class="textarea-field" rows="2" :value="form.userGuidance" @input="update('userGuidance', $event)" placeholder="对章节安排的额外要求"></textarea>
+        </label>
+        <div class="action-row">
+          <button class="btn btn-primary" :class="{ 'btn-highlight': workflowStore.nextStep === 'blueprint' }" :disabled="buttonStates.blueprintDisabled" @click="$emit('run', 'blueprint')">生成章节蓝图</button>
+        </div>
       </div>
     </div>
-    <div class="section">
-      <div class="section-title">定稿</div>
-      <div class="action-row">
-        <button
-          class="btn btn-ghost"
-          :disabled="buttonStates.finalizeDisabled"
-          :title="disabledTooltip('finalize')"
-          @click="$emit('run', 'finalize')"
-        >
-          章节定稿
-        </button>
-        <button class="btn btn-outline" @click="$emit('run', 'consistency')">一致性检查</button>
+
+    <!-- Step 3: 草稿生成 -->
+    <div class="step-section" :class="{ 'step-section--active': activeStep === 'draft', 'step-section--disabled': !workflowStore.hasBlueprint }">
+      <button class="step-header" @click="toggleStep('draft')" :disabled="!workflowStore.hasBlueprint">
+        <span class="step-header-title">
+          <span class="step-num">3</span>
+          章节草稿
+          <span v-if="workflowStore.completedSteps.includes('draft')" class="step-done">✓</span>
+        </span>
+        <span class="chevron">{{ activeStep === 'draft' ? '▾' : '▸' }}</span>
+      </button>
+      <div v-if="activeStep === 'draft'" class="step-body">
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">章节号</span>
+            <div class="chapter-input-wrapper">
+              <button class="chapter-btn" @click="changeChapter(-1)" title="上一章">◀</button>
+              <input class="input-field chapter-input" type="number" :value="form.chapterNumber" @input="update('chapterNumber', $event)" />
+              <button class="chapter-btn" @click="changeChapter(1)" title="下一章">▶</button>
+            </div>
+          </label>
+          <button class="btn btn-ghost btn-next-chapter" @click="$emit('next-chapter')">下一章 →</button>
+        </div>
+        <button class="btn btn-ghost btn-preview-prompt" @click="$emit('run', 'preview-prompt')">预览/编辑提示词</button>
+        <div class="action-row">
+          <button class="btn btn-primary" :class="{ 'btn-highlight': workflowStore.nextStep === 'draft' }" :disabled="buttonStates.draftDisabled" @click="$emit('run', 'draft')">生成草稿</button>
+          <button class="btn btn-ghost" :disabled="buttonStates.draftDisabled" @click="$emit('run', 'batch')">批量生成</button>
+        </div>
       </div>
     </div>
-    <div class="section">
-      <div class="section-title">工具</div>
-      <input ref="fileInput" type="file" class="file-input" @change="handleFile" />
-      <div class="action-row">
-        <button class="btn btn-ghost" @click="openFilePicker">导入知识库</button>
-        <button class="btn btn-outline" @click="$emit('clear-vectorstore')">清空向量库</button>
+
+    <!-- Step 4: 定稿 -->
+    <div class="step-section" :class="{ 'step-section--active': activeStep === 'finalize', 'step-section--disabled': !workflowStore.completedSteps.includes('draft') }">
+      <button class="step-header" @click="toggleStep('finalize')" :disabled="!workflowStore.completedSteps.includes('draft')">
+        <span class="step-header-title">
+          <span class="step-num">4</span>
+          定稿
+          <span v-if="workflowStore.completedSteps.includes('finalize')" class="step-done">✓</span>
+        </span>
+        <span class="chevron">{{ activeStep === 'finalize' ? '▾' : '▸' }}</span>
+      </button>
+      <div v-if="activeStep === 'finalize'" class="step-body">
+        <p class="step-hint">更新全局摘要、角色状态，并将章节内容加入向量库</p>
+        <div class="action-row">
+          <button class="btn btn-primary" :class="{ 'btn-highlight': workflowStore.nextStep === 'finalize' }" :disabled="buttonStates.finalizeDisabled" @click="$emit('run', 'finalize')">章节定稿</button>
+          <button class="btn btn-outline" @click="$emit('run', 'consistency')">一致性检查</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 工具区 (折叠) -->
+    <div class="section tools-section">
+      <button class="section-toggle" type="button" @click="toolsOpen = !toolsOpen">
+        <span>工具 / 配置</span>
+        <span class="chevron">{{ toolsOpen ? '▾' : '▸' }}</span>
+      </button>
+      <div v-if="toolsOpen" class="section-body">
+        <input ref="fileInput" type="file" class="file-input" @change="handleFile" />
+        <div class="action-row">
+          <button class="btn btn-ghost" @click="openFilePicker">导入知识库</button>
+          <button class="btn btn-outline" @click="$emit('clear-vectorstore')">清空向量库</button>
+        </div>
       </div>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useWorkflowStore } from "@/stores/workflow";
-import { useConfigStore } from "@/stores/config";
+import { computed, ref, watch } from "vue";
+import { useWorkflowStore, type WorkflowStep } from "@/stores/workflow";
 import StepIndicator from "./StepIndicator.vue";
+import HelpTooltip from "./HelpTooltip.vue";
 
 export type WorkbenchForm = {
   topic: string;
@@ -192,26 +175,36 @@ const emit = defineEmits<{
 }>();
 
 const workflowStore = useWorkflowStore();
-const configStore = useConfigStore();
 const fileInput = ref<HTMLInputElement | null>(null);
-const modelOpen = ref(false);
-const advancedOpen = ref(false);
+
+// 当前展开的步骤
+const activeStep = ref<WorkflowStep | null>(workflowStore.currentStep);
+const toolsOpen = ref(false);
+
+// 同步 workflow store 的当前步骤
+watch(() => workflowStore.currentStep, (newStep) => {
+  activeStep.value = newStep;
+});
 
 const buttonStates = computed(() => workflowStore.buttonStates);
 
-const disabledTooltip = (step: "architecture" | "blueprint" | "draft" | "finalize") => {
-  return workflowStore.getDisabledTooltip(step) ?? "";
+const toggleStep = (step: WorkflowStep) => {
+  activeStep.value = activeStep.value === step ? null : step;
 };
 
-const modelSummary = computed(() => {
-  const llmLabel = props.form.llmConfigName || "默认 LLM";
-  const embeddingLabel = props.form.embeddingConfigName || "默认 Embedding";
-  return `${llmLabel} · ${embeddingLabel}`;
-});
+const handleStepClick = (step: WorkflowStep) => {
+  activeStep.value = step;
+};
 
 const update = (field: keyof WorkbenchForm, event: Event) => {
   const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
   const next = { ...props.form, [field]: target.value };
+  emit("update:form", next);
+};
+
+const changeChapter = (delta: number) => {
+  const current = Number(props.form.chapterNumber) || 1;
+  const next = { ...props.form, chapterNumber: String(Math.max(1, current + delta)) };
   emit("update:form", next);
 };
 
@@ -238,6 +231,93 @@ const handleFile = (event: Event) => {
   overflow-y: auto;
 }
 
+.genre-badge {
+  background: rgba(126, 91, 255, 0.15);
+  color: var(--accent-bright);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 步骤区块 */
+.step-section {
+  border-bottom: 1px solid rgba(229, 225, 245, 0.08);
+}
+
+.step-section--disabled {
+  opacity: 0.5;
+}
+
+.step-section--disabled .step-header {
+  cursor: not-allowed;
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.step-header:hover:not(:disabled) {
+  background: rgba(126, 91, 255, 0.08);
+}
+
+.step-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(126, 91, 255, 0.15);
+  color: var(--accent-bright);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-section--active .step-num {
+  background: var(--accent);
+  color: white;
+}
+
+.step-done {
+  color: var(--success);
+  font-size: 14px;
+}
+
+.step-body {
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.step-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(126, 91, 255, 0.06);
+  border-radius: 6px;
+}
+
+/* 通用区块 */
 .section {
   border-bottom: 1px solid rgba(229, 225, 245, 0.08);
 }
@@ -249,7 +329,6 @@ const handleFile = (event: Event) => {
 .section-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   width: 100%;
   background: rgba(15, 11, 22, 0.4);
@@ -266,17 +345,16 @@ const handleFile = (event: Event) => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 8px;
 }
 
 .chevron {
   color: var(--accent-bright);
   font-size: 12px;
+  margin-left: auto;
 }
 
-.advanced-toggle {
-  margin-top: 4px;
-}
-
+/* 字段样式 */
 .field {
   display: flex;
   flex-direction: column;
@@ -286,28 +364,96 @@ const handleFile = (event: Event) => {
 .field-label {
   font-size: 12px;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.required {
+  color: #ef4444;
+}
+
+.optional {
+  color: var(--text-muted);
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+  align-items: end;
 }
 
 .action-row {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  margin-top: 4px;
 }
 
 .btn-next-chapter {
-  align-self: flex-end;
   white-space: nowrap;
+}
+
+.chapter-input-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.chapter-input {
+  text-align: center;
+  width: 60px;
+  -moz-appearance: textfield;
+}
+
+.chapter-input::-webkit-outer-spin-button,
+.chapter-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.chapter-btn {
+  padding: 2px 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  border-radius: 4px;
+}
+
+.chapter-btn:hover {
+  background: rgba(126, 91, 255, 0.15);
+  color: var(--accent-bright);
+}
+
+.btn-preview-prompt {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.tools-section {
+  margin-top: auto;
+  padding: 12px 16px;
 }
 
 .file-input {
   display: none;
+}
+
+/* 高亮按钮样式 */
+.btn-highlight {
+  animation: btn-pulse 2s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(126, 91, 255, 0.5);
+}
+
+@keyframes btn-pulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(126, 91, 255, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(126, 91, 255, 0.8);
+  }
 }
 </style>

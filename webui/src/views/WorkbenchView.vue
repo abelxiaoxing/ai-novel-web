@@ -11,6 +11,7 @@
     <div class="app-grid" :class="{ 'with-progress': batchRunning }">
       <TopBar
         :project-name="projectStore.currentProject?.name"
+        :genre="projectStore.currentProject?.genre"
         :status-label="statusLabel"
         :status-variant="statusVariant"
         @projects="goProjects"

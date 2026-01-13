@@ -151,10 +151,12 @@ def split_text_for_vectorstore(chapter_text: str, max_length: int = 500, similar
     """
     if not chapter_text.strip():
         return []
-    
-    # nltk.download('punkt', quiet=True)
-    # nltk.download('punkt_tab', quiet=True)
-    sentences = nltk.sent_tokenize(chapter_text)
+
+    try:
+        sentences = nltk.sent_tokenize(chapter_text)
+    except LookupError:
+        nltk.download('punkt_tab', quiet=True)
+        sentences = nltk.sent_tokenize(chapter_text)
     if not sentences:
         return []
     

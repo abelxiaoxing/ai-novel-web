@@ -37,10 +37,18 @@ const confirm = () => {
 </script>
 
 <style scoped>
+:deep(.modal-panel) {
+  width: 94vw;
+  height: 92vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .prompt-editor {
   margin-top: 16px;
   width: 100%;
-  height: 320px;
+  flex: 1;
+  min-height: 0;
   border-radius: 12px;
   border: 1px solid rgba(229, 225, 245, 0.12);
   background: rgba(12, 10, 18, 0.75);
@@ -49,6 +57,7 @@ const confirm = () => {
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.6;
+  resize: vertical;
 }
 
 .modal-actions {

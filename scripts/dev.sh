@@ -8,6 +8,11 @@ VITE_API_BASE="${VITE_API_BASE:-http://localhost:${API_PORT}}"
 
 cd "${ROOT_DIR}"
 
+# 自动激活虚拟环境
+if [[ -d "${ROOT_DIR}/.venv" ]]; then
+  source "${ROOT_DIR}/.venv/bin/activate"
+fi
+
 cleanup() {
   if [[ -n "${API_PID:-}" ]]; then
     kill "${API_PID}" 2>/dev/null || true

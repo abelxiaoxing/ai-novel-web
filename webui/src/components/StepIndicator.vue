@@ -8,33 +8,22 @@
         'step--completed': isCompleted(step.key),
         'step--current': isCurrent(step.key),
         'step--disabled': !isAvailable(step.key),
+        'step--clickable': isAvailable(step.key),
       }"
+      @click="handleClick(step.key)"
     >
-      <div
-        class="step-circle"
-        :title="getTooltip(step.key)"
-        @mouseenter="showTooltip(step.key, $event)"
-        @mouseleave="hideTooltip"
-      >
+      <div class="step-circle" :title="getTooltip(step.key)">
         <span v-if="isCompleted(step.key)" class="step-icon">✓</span>
         <span v-else class="step-number">{{ index + 1 }}</span>
       </div>
       <span class="step-label">{{ step.label }}</span>
       <div v-if="index < steps.length - 1" class="step-connector" />
     </div>
-    <!-- Tooltip -->
-    <div
-      v-if="tooltipVisible && tooltipText"
-      class="step-tooltip"
-      :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }"
-    >
-      {{ tooltipText }}
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { computed } from "vue";
 import { WORKFLOW_STEPS, type WorkflowStep } from "@/stores/workflow";
 
 const props = defineProps<{
@@ -42,13 +31,11 @@ const props = defineProps<{
   completedSteps: WorkflowStep[];
 }>();
 
-const steps = computed(() => WORKFLOW_STEPS);
+const emit = defineEmits<{
+  (event: "step-click", step: WorkflowStep): void;
+}>();
 
-// Tooltip state
-const tooltipVisible = ref(false);
-const tooltipText = ref<string | null>(null);
-const tooltipX = ref(0);
-const tooltipY = ref(0);
+const steps = computed(() => WORKFLOW_STEPS);
 
 const isCompleted = (step: WorkflowStep): boolean => {
   return props.completedSteps.includes(step);
@@ -77,24 +64,10 @@ const getTooltip = (step: WorkflowStep): string | undefined => {
   return undefined;
 };
 
-const showTooltip = (step: WorkflowStep, event: MouseEvent) => {
-  const text = getTooltip(step);
-  if (text) {
-    tooltipText.value = text;
-    const target = event.target as HTMLElement;
-    const rect = target.getBoundingClientRect();
-    const parentRect = target.closest(".step-indicator")?.getBoundingClientRect();
-    if (parentRect) {
-      tooltipX.value = rect.left - parentRect.left + rect.width / 2;
-      tooltipY.value = rect.bottom - parentRect.top + 8;
-    }
-    tooltipVisible.value = true;
+const handleClick = (step: WorkflowStep) => {
+  if (isAvailable(step)) {
+    emit("step-click", step);
   }
-};
-
-const hideTooltip = () => {
-  tooltipVisible.value = false;
-  tooltipText.value = null;
 };
 </script>
 
@@ -195,49 +168,20 @@ const hideTooltip = () => {
   background: rgba(15, 11, 22, 0.45);
   border-color: rgba(229, 225, 245, 0.1);
   color: rgba(185, 176, 214, 0.4);
-  cursor: help;
+  cursor: not-allowed;
 }
 
 .step--disabled .step-label {
   color: rgba(185, 176, 214, 0.4);
 }
 
-/* Tooltip */
-.step-tooltip {
-  position: absolute;
-  background: var(--panel-strong);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--text);
-  white-space: nowrap;
-  transform: translateX(-50%);
-  z-index: 100;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
-  pointer-events: none;
+/* Clickable state */
+.step--clickable {
+  cursor: pointer;
 }
 
-.step-tooltip::before {
-  content: "";
-  position: absolute;
-  top: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 6px solid var(--panel-border);
-}
-
-.step-tooltip::after {
-  content: "";
-  position: absolute;
-  top: -4px;
-  left: 50%;
-  transform: translateX(-50%);
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 5px solid var(--panel-strong);
+.step--clickable:hover .step-circle {
+  transform: scale(1.1);
 }
 
 @keyframes pulse {

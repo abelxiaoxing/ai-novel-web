@@ -6,12 +6,8 @@
     </div>
     <div class="modal-form">
       <label class="field">
-        <span class="field-label">项目名称</span>
-        <input class="input-field" v-model="form.name" />
-      </label>
-      <label class="field">
         <span class="field-label">主题</span>
-        <input class="input-field" v-model="form.topic" />
+        <input class="input-field" v-model="form.topic" placeholder="例：废柴逆袭成为最强" />
       </label>
       <label class="field">
         <span class="field-label">题材类型</span>
@@ -40,7 +36,6 @@ import { reactive } from "vue";
 import ModalShell from "@/components/ModalShell.vue";
 
 const form = reactive({
-  name: "",
   topic: "",
   genre: "",
   num_chapters: "",
@@ -53,7 +48,7 @@ const emit = defineEmits<{
 }>();
 
 const submit = () => {
-  emit("submit", { ...form });
+  emit("submit", { ...form, name: form.topic });
 };
 </script>
 
