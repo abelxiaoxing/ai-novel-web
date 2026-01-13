@@ -32,7 +32,8 @@ def finalize_chapter(
     embedding_model_name: str,
     interface_format: str,
     max_tokens: int,
-    timeout: int = 900
+    timeout: int = 900,
+    skip_vectorstore: bool = False
 ):
     """
     对指定章节做最终处理：更新前文摘要、更新角色状态、插入向量库等。
@@ -81,16 +82,20 @@ def finalize_chapter(
     clear_file_content(character_state_file)
     save_string_to_txt(new_char_state, character_state_file)
 
-    update_vector_store(
-        embedding_adapter=create_embedding_adapter(
-            embedding_interface_format,
-            embedding_api_key,
-            embedding_url,
-            embedding_model_name
-        ),
-        new_chapter=chapter_text,
-        filepath=filepath
-    )
+    if not skip_vectorstore:
+        try:
+            update_vector_store(
+                embedding_adapter=create_embedding_adapter(
+                    embedding_interface_format,
+                    embedding_api_key,
+                    embedding_url,
+                    embedding_model_name
+                ),
+                new_chapter=chapter_text,
+                filepath=filepath
+            )
+        except Exception as e:
+            logging.warning(f"Vector store update failed, skipping: {e}")
 
     logging.info(f"Chapter {novel_number} has been finalized.")
 

@@ -136,7 +136,7 @@ class OllamaEmbeddingAdapter(BaseEmbeddingAdapter):
 
         data = {"model": self.model_name, "prompt": text}
         try:
-            response = requests.post(url, json=data)
+            response = requests.post(url, json=data, timeout=60)
             response.raise_for_status()
             result = response.json()
             if "embedding" not in result:
@@ -168,7 +168,7 @@ class MLStudioEmbeddingAdapter(BaseEmbeddingAdapter):
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         try:
             payload = {"input": texts, "model": self.model_name}
-            response = requests.post(self.url, json=payload, headers=self.headers)
+            response = requests.post(self.url, json=payload, headers=self.headers, timeout=60)
             response.raise_for_status()
             result = response.json()
             if "data" not in result:
@@ -185,7 +185,7 @@ class MLStudioEmbeddingAdapter(BaseEmbeddingAdapter):
     def embed_query(self, query: str) -> List[float]:
         try:
             payload = {"input": query, "model": self.model_name}
-            response = requests.post(self.url, json=payload, headers=self.headers)
+            response = requests.post(self.url, json=payload, headers=self.headers, timeout=60)
             response.raise_for_status()
             result = response.json()
             if "data" not in result or not result["data"]:
@@ -235,7 +235,7 @@ class GeminiEmbeddingAdapter(BaseEmbeddingAdapter):
         payload = {"model": self.model_name, "content": {"parts": [{"text": text}]}}
 
         try:
-            response = requests.post(url, json=payload)
+            response = requests.post(url, json=payload, timeout=60)
             print(response.text)
             response.raise_for_status()
             result = response.json()
@@ -280,7 +280,7 @@ class SiliconFlowEmbeddingAdapter(BaseEmbeddingAdapter):
             try:
                 self.payload["input"] = text
                 response = requests.post(
-                    self.url, json=self.payload, headers=self.headers
+                    self.url, json=self.payload, headers=self.headers, timeout=60
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -303,7 +303,7 @@ class SiliconFlowEmbeddingAdapter(BaseEmbeddingAdapter):
     def embed_query(self, query: str) -> List[float]:
         try:
             self.payload["input"] = query
-            response = requests.post(self.url, json=self.payload, headers=self.headers)
+            response = requests.post(self.url, json=self.payload, headers=self.headers, timeout=60)
             response.raise_for_status()
             result = response.json()
             if not result or "data" not in result or not result["data"]:
