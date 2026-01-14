@@ -361,7 +361,11 @@ export const useWorkflowStore = defineStore("workflow", {
       if (this.hasBlueprint) {
         this.completedSteps.push("blueprint");
       }
-      if (hasDraft) {
+      // 只有当前章节有草稿（状态为 draft-pending 或 finalized）时，才将 draft 添加到 completedSteps
+      const currentChapterStatus = this.chapterStatuses[this.currentChapter];
+      const hasCurrentChapterDraft = currentChapterStatus &&
+        (currentChapterStatus.status === "draft-pending" || currentChapterStatus.status === "finalized");
+      if (hasCurrentChapterDraft) {
         this.completedSteps.push("draft");
       }
 

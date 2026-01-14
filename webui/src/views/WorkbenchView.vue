@@ -215,7 +215,7 @@ const batchSummary = ref("");
 const batchError = ref("");
 const batchTaskId = ref<string | null>(null);
 const batchConfig = ref({ start: 1, end: 1, delaySeconds: 0 });
-const workflowSnapshot = ref<WorkflowSnapshot>({ finalizedChapters: [] });
+const workflowSnapshot = ref<WorkflowSnapshot>({ chapterStatuses: {} });
 let batchRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let batchRefreshPending = false;
 
@@ -263,12 +263,22 @@ const mergeProjectState = (
 ): ProjectState => {
   const safeRemote = remote ?? {};
   const safeLocal = local ?? {};
+
+  // Deep merge workflow.chapterStatuses to preserve local chapter states
+  const remoteChapterStatuses = safeRemote.workflow?.chapterStatuses ?? {};
+  const localChapterStatuses = safeLocal.workflow?.chapterStatuses ?? {};
+  const mergedChapterStatuses = { ...localChapterStatuses, ...remoteChapterStatuses };
+
   return {
     ...safeLocal,
     ...safeRemote,
     form: { ...safeLocal.form, ...safeRemote.form },
     activeFile: safeRemote.activeFile ?? safeLocal.activeFile,
-    workflow: { ...safeLocal.workflow, ...safeRemote.workflow },
+    workflow: {
+      ...safeLocal.workflow,
+      ...safeRemote.workflow,
+      chapterStatuses: mergedChapterStatuses,
+    },
   };
 };
 
@@ -305,6 +315,10 @@ const normalizeWorkflowSnapshot = (value?: WorkflowSnapshot): WorkflowSnapshot =
   return { chapterStatuses: {} };
 };
 
+const buildWorkflowSnapshot = (): WorkflowSnapshot => ({
+  chapterStatuses: { ...workflowStore.chapterStatuses },
+});
+
 const normalizePayloadContent = (payload: unknown): string => {
   if (typeof payload === "string") {
     return payload;
@@ -318,6 +332,25 @@ const normalizePayloadContent = (payload: unknown): string => {
     return (payload as { content: string }).content;
   }
   return "";
+};
+
+const reconcileChapterStatuses = (
+  chapterNumbers: number[],
+  snapshotStatuses: Record<number, ChapterState>
+): { chapterStatuses: Record<number, ChapterState>; updated: boolean } => {
+  if (!chapterNumbers.length) {
+    return { chapterStatuses: { ...snapshotStatuses }, updated: false };
+  }
+  const nextStatuses = { ...snapshotStatuses };
+  let updated = false;
+  chapterNumbers.forEach((chapterNumber) => {
+    if (!nextStatuses[chapterNumber]) {
+      // Assume chapters on disk are ready to continue if state is missing.
+      nextStatuses[chapterNumber] = { status: "finalized" };
+      updated = true;
+    }
+  });
+  return { chapterStatuses: nextStatuses, updated };
 };
 
 const loadBlueprintContent = async () => {
@@ -550,16 +583,29 @@ const fetchProjectFileContent = async (fileKey: string): Promise<string> => {
   }
 };
 
-const syncWorkflowFromProject = async () => {
+const syncWorkflowFromProject = async (): Promise<boolean> => {
   const projectId = projectStore.currentProject?.id;
   if (!projectId) {
-    return;
+    return false;
   }
 
   const currentChapter =
     chapterNumberValue.value > 0 ? chapterNumberValue.value : workflowStore.currentChapter;
   const chapters = collectChapterNumbers(projectStore.fileTree);
-  const hasDraft = currentChapter > 0 && chapters.includes(currentChapter);
+
+  // 从 workflowSnapshot 获取章节状态
+  const snapshotStatuses = workflowSnapshot.value.chapterStatuses ?? {};
+  const { chapterStatuses, updated } = reconcileChapterStatuses(chapters, snapshotStatuses);
+  if (updated) {
+    workflowSnapshot.value = { chapterStatuses };
+  }
+
+  // hasDraft: 检查是否存在任意章节的草稿（文件树中有章节文件）
+  // 只要有章节文件，就认为有草稿
+  const hasDraft = chapters.length > 0;
+
+  // hasFinalize: 检查是否存在任意章节已定稿
+  const hasFinalize = Object.values(chapterStatuses).some((state) => state.status === "finalized");
 
   const [architectureText, blueprintText] = await Promise.all([
     fetchProjectFileContent("architecture"),
@@ -569,11 +615,7 @@ const syncWorkflowFromProject = async () => {
   const hasArchitecture = architectureText.trim().length > 0;
   const hasBlueprint = blueprintText.trim().length > 0;
 
-  // 从 workflowSnapshot 获取章节状态
-  const chapterStatuses = workflowSnapshot.value.chapterStatuses ?? {};
-  const currentChapterState = chapterStatuses[currentChapter];
-  const hasFinalize = currentChapterState?.status === "finalized";
-
+  // normalizedHasBlueprint: 有蓝图文件，或者有任意章节的草稿/定稿
   const normalizedHasBlueprint = hasBlueprint || hasDraft || hasFinalize;
   const normalizedHasArchitecture = hasArchitecture || normalizedHasBlueprint;
 
@@ -592,6 +634,7 @@ const syncWorkflowFromProject = async () => {
     currentChapter,
     chapterStatuses,
   });
+  return updated;
 };
 
 const queueSaveState = () => {
@@ -605,6 +648,8 @@ const queueSaveState = () => {
   if (saveTimer) {
     clearTimeout(saveTimer);
   }
+  const workflow = buildWorkflowSnapshot();
+  workflowSnapshot.value = workflow;
   const payload: ProjectState = {
     form: { ...form },
     activeFile: projectStore.activeFile
@@ -614,7 +659,7 @@ const queueSaveState = () => {
           chapterNumber: projectStore.activeFile.chapterNumber,
         }
       : undefined,
-    workflow: { ...workflowSnapshot.value },
+    workflow,
     batchTask: batchRunning.value && batchTaskId.value
       ? {
           taskId: batchTaskId.value,
@@ -693,14 +738,10 @@ const loadProjectState = async () => {
       parseBatchProgress(existingTask.logs);
     }
   }
-  try {
-    applyFormState(state.form);
-    const activeFile = normalizeActiveFile(state.activeFile);
-    if (activeFile) {
-      await projectStore.openFile(activeFile);
-    }
-  } finally {
-    stateLoaded.value = true;
+  applyFormState(state.form);
+  const activeFile = normalizeActiveFile(state.activeFile);
+  if (activeFile) {
+    await projectStore.openFile(activeFile);
   }
   if (!projectStore.activeFile) {
     const fallback = resolveFallbackFile();
@@ -708,7 +749,11 @@ const loadProjectState = async () => {
       await projectStore.openFile(fallback);
     }
   }
-  await syncWorkflowFromProject();
+  const workflowUpdated = await syncWorkflowFromProject();
+  stateLoaded.value = true;
+  if (workflowUpdated) {
+    queueSaveState();
+  }
 
   // 设置章节号为当前定稿章节+1
   const lastFinalized = workflowStore.lastFinalizedChapter();
@@ -1138,12 +1183,10 @@ const handleFileDelete = async (node: FileNode) => {
   }
   try {
     await projectStore.deleteChapterFile(node.chapterNumber);
-    const finalized = workflowSnapshot.value.finalizedChapters ?? [];
-    if (finalized.includes(node.chapterNumber)) {
-      workflowSnapshot.value = {
-        ...workflowSnapshot.value,
-        finalizedChapters: finalized.filter((chapter) => chapter !== node.chapterNumber),
-      };
+    if (workflowStore.chapterStatuses[node.chapterNumber]) {
+      const nextStatuses = { ...workflowStore.chapterStatuses };
+      delete nextStatuses[node.chapterNumber];
+      workflowStore.chapterStatuses = nextStatuses;
       queueSaveState();
     }
     toastStore.success(`已删除第 ${node.chapterNumber} 章`);
@@ -1176,15 +1219,12 @@ const handleFileRename = async (payload: { node: FileNode; name: string }) => {
         chapterNumber: nextNumber,
       });
     }
-    const finalized = workflowSnapshot.value.finalizedChapters ?? [];
-    if (finalized.includes(node.chapterNumber)) {
-      workflowSnapshot.value = {
-        ...workflowSnapshot.value,
-        finalizedChapters: finalized
-          .filter((chapter) => chapter !== node.chapterNumber)
-          .concat(nextNumber)
-          .sort((a, b) => a - b),
-      };
+    const currentStatuses = workflowStore.chapterStatuses[node.chapterNumber];
+    if (currentStatuses) {
+      const nextStatuses = { ...workflowStore.chapterStatuses };
+      delete nextStatuses[node.chapterNumber];
+      nextStatuses[nextNumber] = currentStatuses;
+      workflowStore.chapterStatuses = nextStatuses;
       queueSaveState();
     }
     toastStore.success(`章节已重命名为第 ${nextNumber} 章`);
@@ -1340,6 +1380,14 @@ watch(form, () => queueSaveState(), { deep: true });
 watch(
   () => projectStore.activeFile,
   () => queueSaveState()
+);
+
+watch(
+  () => workflowStore.chapterStatuses,
+  () => {
+    workflowSnapshot.value = buildWorkflowSnapshot();
+  },
+  { deep: true }
 );
 
 onBeforeUnmount(() => stopBatchRefresh());
