@@ -136,6 +136,7 @@ import RightPanel, { type WorkbenchForm } from "@/components/RightPanel.vue";
 import Sidebar from "@/components/Sidebar.vue";
 import TopBar from "@/components/TopBar.vue";
 import type { ProjectState, WorkbenchFormState, WorkflowSnapshot, BatchTaskState } from "@/api/types";
+import type { ChapterState } from "@/stores/workflow";
 import { getProjectFile, getProjectState, updateProjectState } from "@/api/projects";
 import { useConfigStore } from "@/stores/config";
 import { useProjectStore, type ActiveFile, type FileNode } from "@/stores/project";
@@ -186,6 +187,7 @@ const form = reactive<WorkbenchForm>({
   timeConstraint: "",
   llmConfigName: "",
   embeddingConfigName: "",
+  batchEndChapter: "10",
 });
 
 const blueprintContent = ref("");
@@ -272,14 +274,35 @@ const mergeProjectState = (
 
 const normalizeWorkflowSnapshot = (value?: WorkflowSnapshot): WorkflowSnapshot => {
   if (!value || typeof value !== "object") {
-    return { finalizedChapters: [] };
+    return { chapterStatuses: {} };
   }
-  const finalizedChapters = Array.isArray(value.finalizedChapters)
-    ? value.finalizedChapters
-        .map((item) => Number(item))
-        .filter((item) => Number.isInteger(item) && item > 0)
-    : [];
-  return { finalizedChapters };
+
+  // 兼容旧的 finalizedChapters 格式
+  if (Array.isArray(value.finalizedChapters)) {
+    const chapterStatuses: Record<number, ChapterState> = {};
+    value.finalizedChapters.forEach((chapter) => {
+      const chapterNum = Number(chapter);
+      if (Number.isInteger(chapterNum) && chapterNum > 0) {
+        chapterStatuses[chapterNum] = { status: "finalized" };
+      }
+    });
+    return { chapterStatuses };
+  }
+
+  // 新格式 chapterStatuses
+  if (value.chapterStatuses && typeof value.chapterStatuses === "object") {
+    const chapterStatuses: Record<number, ChapterState> = {};
+    Object.entries(value.chapterStatuses).forEach(([key, val]) => {
+      const chapterNum = Number(key);
+      const state = val as ChapterState;
+      if (Number.isInteger(chapterNum) && chapterNum > 0 && state && typeof state.status === "string") {
+        chapterStatuses[chapterNum] = state;
+      }
+    });
+    return { chapterStatuses };
+  }
+
+  return { chapterStatuses: {} };
 };
 
 const normalizePayloadContent = (payload: unknown): string => {
@@ -430,6 +453,7 @@ const formKeys: (keyof WorkbenchForm)[] = [
   "timeConstraint",
   "llmConfigName",
   "embeddingConfigName",
+  "batchEndChapter",
 ];
 
 const applyFormState = (state?: WorkbenchFormState) => {
@@ -544,8 +568,11 @@ const syncWorkflowFromProject = async () => {
 
   const hasArchitecture = architectureText.trim().length > 0;
   const hasBlueprint = blueprintText.trim().length > 0;
-  const finalizedChapters = workflowSnapshot.value.finalizedChapters ?? [];
-  const hasFinalize = hasDraft && finalizedChapters.includes(currentChapter);
+
+  // 从 workflowSnapshot 获取章节状态
+  const chapterStatuses = workflowSnapshot.value.chapterStatuses ?? {};
+  const currentChapterState = chapterStatuses[currentChapter];
+  const hasFinalize = currentChapterState?.status === "finalized";
 
   const normalizedHasBlueprint = hasBlueprint || hasDraft || hasFinalize;
   const normalizedHasArchitecture = hasArchitecture || normalizedHasBlueprint;
@@ -563,6 +590,7 @@ const syncWorkflowFromProject = async () => {
     hasFinalize,
     totalChapters: resolvedTotalChapters,
     currentChapter,
+    chapterStatuses,
   });
 };
 
@@ -681,6 +709,12 @@ const loadProjectState = async () => {
     }
   }
   await syncWorkflowFromProject();
+
+  // 设置章节号为当前定稿章节+1
+  const lastFinalized = workflowStore.lastFinalizedChapter();
+  if (lastFinalized > 0 && (!state.form?.chapterNumber || Number(state.form.chapterNumber) <= lastFinalized)) {
+    form.chapterNumber = String(lastFinalized + 1);
+  }
 };
 
 const handleSaveActiveFile = async () => {
@@ -750,8 +784,11 @@ const handleNextChapter = () => {
 
 const batchDefaults = computed(() => {
   const start = chapterNumberValue.value > 0 ? chapterNumberValue.value : 1;
+  const userEnd = Number(form.batchEndChapter);
   const total = Number(form.numberOfChapters);
-  const end = Number.isFinite(total) && total >= start ? total : start;
+  const end = Number.isFinite(userEnd) && userEnd >= start
+    ? Math.min(userEnd, Number.isFinite(total) ? total : userEnd)
+    : (Number.isFinite(total) && total >= start ? total : start);
   return { start, end };
 });
 
@@ -840,6 +877,47 @@ const startBatch = async (payload: { start: number; end: number; delaySeconds: n
   if (!projectId) {
     return;
   }
+
+  // 如果当前章节有未定稿的草稿，先自动定稿
+  if (workflowStore.hasPendingDraft) {
+    toastStore.info("当前章节有未定稿草稿，正在自动定稿...");
+    const finalizeTaskId = await runTask(
+      "自动定稿",
+      () =>
+        finalizeChapter(projectId, {
+          novel_number: workflowStore.currentChapter,
+          word_number: Number(form.wordNumber),
+          llm_config_name: configStore.chooseConfigs.finalize_llm || form.llmConfigName || undefined,
+          embedding_config_name: form.embeddingConfigName || configStore.chooseConfigs.embedding || undefined,
+        }),
+      "finalize"
+    );
+    if (finalizeTaskId) {
+      // 等待定稿完成后再继续批量生成
+      const checkInterval = setInterval(() => {
+        const task = taskStore.tasks.find(t => t.id === finalizeTaskId);
+        if (task && (task.status === "success" || task.status === "failed")) {
+          clearInterval(checkInterval);
+          if (task.status === "success") {
+            workflowStore.finalizeChapter();
+            queueSaveState();
+            // 定稿成功后继续批量生成
+            executeBatchGeneration(projectId, payload);
+          } else {
+            toastStore.error("自动定稿失败，已取消批量生成");
+            batchRunning.value = false;
+          }
+        }
+      }, 500);
+    }
+    return;
+  }
+
+  // 直接执行批量生成
+  executeBatchGeneration(projectId, payload);
+};
+
+const executeBatchGeneration = async (projectId: string, payload: { start: number; end: number; delaySeconds: number }) => {
   const choose = configStore.chooseConfigs;
   const resolveLlm = (fallback?: string) => form.llmConfigName || fallback || undefined;
   const resolveEmbedding = () => form.embeddingConfigName || choose.embedding || undefined;
@@ -1137,18 +1215,19 @@ watch(
         }
         const currentChapter = workflowStore.currentChapter;
         if (task.status === "success") {
-          if (action === "architecture" || action === "blueprint" || action === "draft" || action === "finalize") {
+          // 只处理在 WORKFLOW_STEPS 中的步骤
+          if (action === "architecture" || action === "blueprint" || action === "draft") {
             workflowStore.completeStep(action);
-          }
-          if (action === "finalize" && currentChapter > 0) {
-            const finalized = workflowSnapshot.value.finalizedChapters ?? [];
-            if (!finalized.includes(currentChapter)) {
-              workflowSnapshot.value = {
-                ...workflowSnapshot.value,
-                finalizedChapters: [...finalized, currentChapter].sort((a, b) => a - b),
-              };
+            // 草稿生成完成
+            if (action === "draft") {
+              // 草稿状态已在 completeStep 中设置
               queueSaveState();
             }
+          }
+          // 定稿完成 - 不再是 workflow step，单独处理
+          if (action === "finalize") {
+            workflowStore.finalizeChapter();
+            queueSaveState();
           }
           if (action === "blueprint") {
             await loadBlueprintContent();
@@ -1166,8 +1245,8 @@ watch(
           const stepToastMap: Record<string, string> = {
             architecture: "架构已完成，下一步生成章节蓝图。",
             blueprint: "蓝图已完成，下一步生成章节草稿。",
-            draft: "草稿已完成，可继续生成下一章或进行定稿。",
-            finalize: "定稿已完成，可以开始下一章。",
+            draft: "章节草稿已生成，请确认内容后点击「确认定稿」。",
+            finalize: "章节已定稿，可以继续生成下一章。",
           };
           if (action && stepToastMap[action]) {
             toastStore.success(stepToastMap[action]);
@@ -1262,6 +1341,11 @@ watch(
     const parsed = Number(value);
     if (!Number.isNaN(parsed)) {
       workflowStore.setTotalChapters(parsed);
+      // 如果批量结束章节大于新的总章节数，则自动调整
+      const currentEnd = Number(form.batchEndChapter);
+      if (Number.isNaN(currentEnd) || currentEnd > parsed) {
+        form.batchEndChapter = String(parsed);
+      }
     }
   },
   { immediate: true }

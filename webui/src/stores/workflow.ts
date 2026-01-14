@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 
-export type WorkflowStep = "architecture" | "blueprint" | "draft" | "finalize";
+export type WorkflowStep = "architecture" | "blueprint" | "draft";
+export type ChapterStatus = "not-started" | "draft-pending" | "finalized";
 
 export interface StepConfig {
   key: WorkflowStep;
@@ -12,9 +13,13 @@ export interface StepConfig {
 export const WORKFLOW_STEPS: StepConfig[] = [
   { key: "architecture", label: "架构生成", icon: "building" },
   { key: "blueprint", label: "蓝图生成", icon: "map", prerequisite: "architecture" },
-  { key: "draft", label: "草稿生成", icon: "edit", prerequisite: "blueprint" },
-  { key: "finalize", label: "定稿", icon: "check", prerequisite: "draft" },
+  { key: "draft", label: "章节生成", icon: "edit", prerequisite: "blueprint" },
 ];
+
+export interface ChapterState {
+  status: ChapterStatus;
+  modifiedSinceFinalize?: boolean; // 编辑后标记需要重新定稿
+}
 
 export interface WorkflowState {
   currentStep: WorkflowStep;
@@ -23,6 +28,7 @@ export interface WorkflowState {
   hasBlueprint: boolean;
   currentChapter: number;
   totalChapters: number;
+  chapterStatuses: Record<number, ChapterState>; // 章节号 -> 状态
 }
 
 /**
@@ -31,18 +37,32 @@ export interface WorkflowState {
 export function computeButtonStates(state: {
   hasArchitecture: boolean;
   hasBlueprint: boolean;
-  hasDraft?: boolean;
+  currentChapter: number;
+  chapterStatuses: Record<number, ChapterState>;
+  totalChapters: number;
 }): {
   architectureDisabled: boolean;
   blueprintDisabled: boolean;
   draftDisabled: boolean;
+  draftDisabledReason: string | null;
   finalizeDisabled: boolean;
+  finalizeDisabledReason: string | null;
 } {
+  const { currentChapter, chapterStatuses, totalChapters } = state;
+  const currentChapterState = chapterStatuses[currentChapter] || { status: "not-started" as ChapterStatus };
+
+  // 第1章可直接生成，第N章需要第N-1章已定稿
+  const prevChapter = currentChapter - 1;
+  const prevChapterState = chapterStatuses[prevChapter];
+  const needsPrevFinalized = prevChapter >= 1 && (!prevChapterState || prevChapterState.status !== "finalized");
+
   return {
-    architectureDisabled: false, // Architecture can always be generated
+    architectureDisabled: false,
     blueprintDisabled: !state.hasArchitecture,
-    draftDisabled: !state.hasBlueprint,
-    finalizeDisabled: !state.hasDraft, // Finalize requires a draft chapter
+    draftDisabled: !state.hasBlueprint || needsPrevFinalized,
+    draftDisabledReason: needsPrevFinalized ? `请先定稿第 ${prevChapter} 章` : null,
+    finalizeDisabled: currentChapterState.status === "not-started",
+    finalizeDisabledReason: currentChapterState.status === "not-started" ? "请先生成草稿" : null,
   };
 }
 
@@ -54,6 +74,7 @@ export const useWorkflowStore = defineStore("workflow", {
     hasBlueprint: false,
     currentChapter: 1,
     totalChapters: 10,
+    chapterStatuses: {},
   }),
 
   getters: {
@@ -104,13 +125,72 @@ export const useWorkflowStore = defineStore("workflow", {
     },
 
     /**
+     * Get the status of a specific chapter
+     */
+    getChapterStatus(state): (chapter: number) => ChapterState {
+      return (chapter: number) => {
+        return state.chapterStatuses[chapter] || { status: "not-started" };
+      };
+    },
+
+    /**
+     * Get the status label for display
+     */
+    getChapterStatusLabel(): { label: string; variant: string } {
+      const state = this.getChapterStatus(this.currentChapter);
+      if (state.status === "finalized") {
+        return { label: "✓ 已定稿", variant: "success" };
+      } else if (state.status === "draft-pending") {
+        return { label: "● 草稿待定稿", variant: "warning" };
+      }
+      return { label: "○ 未开始", variant: "muted" };
+    },
+
+    /**
+     * Check if current chapter has a pending draft (needs finalization)
+     */
+    hasPendingDraft(): boolean {
+      const state = this.getChapterStatus(this.currentChapter);
+      return state.status === "draft-pending";
+    },
+
+    /**
+     * Check if current chapter is finalized
+     */
+    isCurrentChapterFinalized(): boolean {
+      const state = this.getChapterStatus(this.currentChapter);
+      return state.status === "finalized";
+    },
+
+    /**
+     * Check if there is any chapter with pending draft status
+     */
+    hasAnyPendingDraft(): boolean {
+      return Object.values(this.chapterStatuses).some(
+        (state) => state.status === "draft-pending"
+      );
+    },
+
+    /**
+     * Get the last finalized chapter number
+     */
+    lastFinalizedChapter(): number {
+      const finalizedChapters = Object.entries(this.chapterStatuses)
+        .filter(([_, state]) => state.status === "finalized")
+        .map(([chapter, _]) => Number(chapter));
+      return finalizedChapters.length > 0 ? Math.max(...finalizedChapters) : 0;
+    },
+
+    /**
      * Get button disabled states
      */
     buttonStates(state): ReturnType<typeof computeButtonStates> {
       return computeButtonStates({
         hasArchitecture: state.hasArchitecture,
         hasBlueprint: state.hasBlueprint,
-        hasDraft: state.completedSteps.includes("draft"),
+        currentChapter: state.currentChapter,
+        chapterStatuses: state.chapterStatuses,
+        totalChapters: state.totalChapters,
       });
     },
 
@@ -134,6 +214,29 @@ export const useWorkflowStore = defineStore("workflow", {
 
   actions: {
     /**
+     * Set the status of a chapter
+     */
+    setChapterStatus(chapter: number, status: ChapterStatus): void {
+      this.chapterStatuses = {
+        ...this.chapterStatuses,
+        [chapter]: { status },
+      };
+    },
+
+    /**
+     * Mark current chapter as modified (needs re-finalization)
+     */
+    markChapterModified(chapter: number): void {
+      const current = this.chapterStatuses[chapter];
+      if (current && current.status === "finalized") {
+        this.chapterStatuses = {
+          ...this.chapterStatuses,
+          [chapter]: { status: "draft-pending", modifiedSinceFinalize: true },
+        };
+      }
+    },
+
+    /**
      * Mark a step as completed and advance to the next step
      */
     completeStep(step: WorkflowStep): void {
@@ -146,6 +249,9 @@ export const useWorkflowStore = defineStore("workflow", {
         this.hasArchitecture = true;
       } else if (step === "blueprint") {
         this.hasBlueprint = true;
+      } else if (step === "draft") {
+        // 单章草稿生成完成，标记为草稿待定稿
+        this.setChapterStatus(this.currentChapter, "draft-pending");
       }
 
       // Advance current step to the next available step
@@ -153,6 +259,13 @@ export const useWorkflowStore = defineStore("workflow", {
       if (nextStep) {
         this.currentStep = nextStep;
       }
+    },
+
+    /**
+     * Mark current chapter as finalized
+     */
+    finalizeChapter(): void {
+      this.setChapterStatus(this.currentChapter, "finalized");
     },
 
     /**
@@ -170,7 +283,9 @@ export const useWorkflowStore = defineStore("workflow", {
         this.hasBlueprint = false;
         // Also reset dependent steps
         this.resetStep("draft");
-        this.resetStep("finalize");
+      } else if (step === "draft") {
+        // Clear all chapter statuses when resetting draft
+        this.chapterStatuses = {};
       }
     },
 
@@ -198,9 +313,9 @@ export const useWorkflowStore = defineStore("workflow", {
     incrementChapter(): boolean {
       if (this.currentChapter < this.totalChapters) {
         this.currentChapter++;
-        // Reset draft and finalize for the new chapter
+        // Reset draft step for the new chapter (keep blueprint and architecture)
         this.completedSteps = this.completedSteps.filter(
-          (s) => s !== "draft" && s !== "finalize"
+          (s) => s !== "draft"
         );
         this.currentStep = "draft";
         return true;
@@ -218,6 +333,7 @@ export const useWorkflowStore = defineStore("workflow", {
       hasFinalize?: boolean;
       totalChapters?: number;
       currentChapter?: number;
+      chapterStatuses?: Record<number, ChapterState>;
     }): void {
       const hasDraft = projectData.hasDraft ?? false;
       const hasFinalize = projectData.hasFinalize ?? false;
@@ -229,6 +345,11 @@ export const useWorkflowStore = defineStore("workflow", {
       this.totalChapters = projectData.totalChapters ?? 10;
       this.currentChapter = projectData.currentChapter ?? 1;
 
+      // Restore chapter statuses if provided
+      if (projectData.chapterStatuses) {
+        this.chapterStatuses = { ...projectData.chapterStatuses };
+      }
+
       // Rebuild completed steps based on flags
       this.completedSteps = [];
       if (this.hasArchitecture) {
@@ -239,9 +360,6 @@ export const useWorkflowStore = defineStore("workflow", {
       }
       if (hasDraft) {
         this.completedSteps.push("draft");
-      }
-      if (hasFinalize && hasDraft) {
-        this.completedSteps.push("finalize");
       }
 
       // Set current step to the next available
@@ -264,6 +382,7 @@ export const useWorkflowStore = defineStore("workflow", {
       this.hasArchitecture = false;
       this.hasBlueprint = false;
       this.currentChapter = 1;
+      this.chapterStatuses = {};
     },
   },
 });

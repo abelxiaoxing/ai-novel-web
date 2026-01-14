@@ -137,10 +137,35 @@ def generate_draft(
         timeout=llm_config.get("timeout", 900),
         custom_prompt_text=payload.get("custom_prompt_text"),
     )
-    log("Draft completed.")
+    log("Draft completed, finalizing...")
+    # 自动定稿
+    finalize_chapter(
+        novel_number=payload["novel_number"],
+        word_number=payload["word_number"],
+        api_key=llm_config["api_key"],
+        base_url=llm_config["base_url"],
+        model_name=llm_config["model_name"],
+        temperature=llm_config.get("temperature", 0.7),
+        filepath=project_root,
+        embedding_api_key=embedding_config["api_key"],
+        embedding_url=embedding_config["base_url"],
+        embedding_interface_format=embedding_config["interface_format"],
+        embedding_model_name=embedding_config["model_name"],
+        interface_format=llm_config["interface_format"],
+        max_tokens=llm_config.get("max_tokens", 2048),
+        timeout=llm_config.get("timeout", 900),
+    )
+    log(f"Chapter {payload['novel_number']} finalized.")
+    # 读取更新后的状态文件
+    summary = read_file(os.path.join(project_root, "global_summary.txt"))
+    character_state = read_file(os.path.join(project_root, "character_state.txt"))
     return {
-        "result": {"chapter_text": chapter_text},
-        "output_files": [f"chapter:{payload['novel_number']}"],
+        "result": {
+            "chapter_text": chapter_text,
+            "global_summary": summary,
+            "character_state": character_state,
+        },
+        "output_files": [f"chapter:{payload['novel_number']}", "summary", "character_state"],
     }
 
 
@@ -269,6 +294,26 @@ def batch_generate(
             save_string_to_txt(enriched, chapter_path)
             chapter_text = enriched
             did_generate = True
+
+        if did_generate:
+            log(f"Finalizing chapter {chapter_number}...")
+            finalize_chapter(
+                novel_number=chapter_number,
+                word_number=word_number,
+                api_key=llm_config["api_key"],
+                base_url=llm_config["base_url"],
+                model_name=llm_config["model_name"],
+                temperature=llm_config.get("temperature", 0.7),
+                filepath=project_root,
+                embedding_api_key=embedding_config["api_key"],
+                embedding_url=embedding_config["base_url"],
+                embedding_interface_format=embedding_config["interface_format"],
+                embedding_model_name=embedding_config["model_name"],
+                interface_format=llm_config["interface_format"],
+                max_tokens=llm_config.get("max_tokens", 2048),
+                timeout=llm_config.get("timeout", 900),
+            )
+            log(f"Chapter {chapter_number} finalized.")
 
         results.append({"chapter": chapter_number, "length": len(chapter_text)})
         log(f"[CHAPTER_DONE] {chapter_number}")

@@ -6,7 +6,7 @@
       <span class="muted">第 {{ workflowStore.currentChapter }}/{{ workflowStore.totalChapters }} 章</span>
     </div>
     <StepIndicator
-      :current-step="activeStep"
+      :current-step="currentStepForIndicator"
       :completed-steps="workflowStore.completedSteps"
       @step-click="handleStepClick"
     />
@@ -75,17 +75,25 @@
       </div>
     </div>
 
-    <!-- Step 3: 草稿生成 -->
+    <!-- Step 3: 章节生成 -->
     <div class="step-section" :class="{ 'step-section--active': activeStep === 'draft', 'step-section--disabled': !workflowStore.hasBlueprint }">
       <button class="step-header" @click="toggleStep('draft')" :disabled="!workflowStore.hasBlueprint">
         <span class="step-header-title">
           <span class="step-num">3</span>
-          章节草稿
+          章节生成
           <span v-if="workflowStore.completedSteps.includes('draft')" class="step-done">✓</span>
         </span>
         <span class="chevron">{{ activeStep === 'draft' ? '▾' : '▸' }}</span>
       </button>
       <div v-if="activeStep === 'draft'" class="step-body">
+        <!-- 章节状态显示 -->
+        <div class="chapter-status-row">
+          <span class="chapter-status-label">当前：第 {{ form.chapterNumber }} 章 / 共 {{ workflowStore.totalChapters }} 章</span>
+          <span class="chapter-status-badge" :class="`status-badge--${workflowStore.getChapterStatusLabel.variant}`">
+            {{ workflowStore.getChapterStatusLabel.label }}
+          </span>
+        </div>
+
         <div class="field-row">
           <label class="field">
             <span class="field-label">章节号</span>
@@ -95,31 +103,43 @@
               <button class="chapter-btn" @click="changeChapter(1)" title="下一章">▶</button>
             </div>
           </label>
-          <button class="btn btn-ghost btn-next-chapter" @click="$emit('next-chapter')">下一章 →</button>
         </div>
         <button class="btn btn-ghost btn-preview-prompt" @click="$emit('run', 'preview-prompt')">预览/编辑提示词</button>
-        <div class="action-row">
-          <button class="btn btn-primary" :class="{ 'btn-highlight': workflowStore.nextStep === 'draft' }" :disabled="buttonStates.draftDisabled" @click="$emit('run', 'draft')">生成草稿</button>
-          <button class="btn btn-ghost" :disabled="buttonStates.draftDisabled" @click="$emit('run', 'batch')">批量生成</button>
-        </div>
-      </div>
-    </div>
 
-    <!-- Step 4: 定稿 -->
-    <div class="step-section" :class="{ 'step-section--active': activeStep === 'finalize', 'step-section--disabled': !workflowStore.completedSteps.includes('draft') }">
-      <button class="step-header" @click="toggleStep('finalize')" :disabled="!workflowStore.completedSteps.includes('draft')">
-        <span class="step-header-title">
-          <span class="step-num">4</span>
-          定稿
-          <span v-if="workflowStore.completedSteps.includes('finalize')" class="step-done">✓</span>
-        </span>
-        <span class="chevron">{{ activeStep === 'finalize' ? '▾' : '▸' }}</span>
-      </button>
-      <div v-if="activeStep === 'finalize'" class="step-body">
-        <p class="step-hint">更新全局摘要、角色状态，并将章节内容加入向量库</p>
+        <!-- 主要操作按钮 -->
+        <div class="action-row action-row--primary">
+          <button
+            class="btn btn-primary"
+            :class="{ 'btn-highlight': workflowStore.nextStep === 'draft' }"
+            :disabled="buttonStates.draftDisabled"
+            :title="buttonStates.draftDisabledReason || ''"
+            @click="$emit('run', 'draft')"
+          >生成草稿</button>
+          <button
+            class="btn btn-primary"
+            :disabled="buttonStates.finalizeDisabled"
+            :title="buttonStates.finalizeDisabledReason || ''"
+            @click="$emit('run', 'finalize')"
+          >确认定稿</button>
+        </div>
+
+        <!-- 批量生成选项 -->
+        <div class="field-row batch-range-row">
+          <label class="field batch-range-field">
+            <span class="field-label">批量到第</span>
+            <input class="input-field batch-end-input" type="number" :value="form.batchEndChapter" @input="update('batchEndChapter', $event)" />
+          </label>
+          <span class="batch-hint">章</span>
+        </div>
+
+        <!-- 批量生成按钮 -->
         <div class="action-row">
-          <button class="btn btn-primary" :class="{ 'btn-highlight': workflowStore.nextStep === 'finalize' }" :disabled="buttonStates.finalizeDisabled" @click="$emit('run', 'finalize')">章节定稿</button>
-          <button class="btn btn-outline" @click="$emit('run', 'consistency')">一致性检查</button>
+          <button
+            class="btn btn-ghost"
+            :disabled="workflowStore.hasAnyPendingDraft()"
+            :title="workflowStore.hasAnyPendingDraft() ? '请先完成定稿' : ''"
+            @click="$emit('run', 'batch')"
+          >批量生成</button>
         </div>
       </div>
     </div>
@@ -160,6 +180,7 @@ export type WorkbenchForm = {
   timeConstraint: string;
   llmConfigName: string;
   embeddingConfigName: string;
+  batchEndChapter: string;
 };
 
 const props = defineProps<{
@@ -178,13 +199,17 @@ const workflowStore = useWorkflowStore();
 const fileInput = ref<HTMLInputElement | null>(null);
 
 // 当前展开的步骤
-const activeStep = ref<WorkflowStep | null>(workflowStore.currentStep);
-const toolsOpen = ref(false);
+const activeStep = ref<WorkflowStep | null>(null);
 
-// 同步 workflow store 的当前步骤
+// 初始化为当前步骤
 watch(() => workflowStore.currentStep, (newStep) => {
   activeStep.value = newStep;
-});
+}, { immediate: true });
+
+const toolsOpen = ref(false);
+
+// 确保 StepIndicator 的 currentStep 不为 null
+const currentStepForIndicator = computed(() => activeStep.value ?? workflowStore.currentStep);
 
 const buttonStates = computed(() => workflowStore.buttonStates);
 
@@ -397,6 +422,52 @@ const handleFile = (event: Event) => {
   white-space: nowrap;
 }
 
+.chapter-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(15, 11, 22, 0.4);
+  border: 1px solid rgba(229, 225, 245, 0.08);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.chapter-status-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.chapter-status-badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.status-badge--success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.status-badge--warning {
+  background: rgba(251, 146, 60, 0.15);
+  color: #fb923c;
+}
+
+.status-badge--muted {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.action-row--primary {
+  gap: 12px;
+}
+
+.action-row--primary .btn {
+  flex: 1;
+}
+
 .chapter-input-wrapper {
   display: flex;
   flex-direction: row;
@@ -431,6 +502,35 @@ const handleFile = (event: Event) => {
 .btn-preview-prompt {
   width: 100%;
   margin-top: 4px;
+}
+
+.batch-range-row {
+  margin-top: 8px;
+  align-items: center;
+  gap: 6px;
+}
+
+.batch-range-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.batch-end-input {
+  width: 60px;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.batch-end-input::-webkit-outer-spin-button,
+.batch-end-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.batch-hint {
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
 .tools-section {

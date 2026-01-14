@@ -1,3 +1,5 @@
+import type { ChapterState } from "@/stores/workflow";
+
 export interface Project {
   id: string;
   name: string;
@@ -46,9 +48,13 @@ export interface WorkbenchFormState {
   timeConstraint?: string;
   llmConfigName?: string;
   embeddingConfigName?: string;
+  batchEndChapter?: string;
 }
 
 export interface WorkflowSnapshot {
+  // 新格式：章节状态映射
+  chapterStatuses?: Record<number, ChapterState>;
+  // 旧格式：已定稿的章节列表（兼容）
   finalizedChapters?: number[];
 }
 

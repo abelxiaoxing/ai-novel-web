@@ -21,11 +21,32 @@ describe("Workflow Store Properties", () => {
 
   it("derives button disabled states from prerequisites", () => {
     fc.assert(
-      fc.property(fc.boolean(), fc.boolean(), fc.boolean(), (hasArchitecture, hasBlueprint, hasDraft) => {
-        const states = computeButtonStates({ hasArchitecture, hasBlueprint, hasDraft });
+      fc.property(fc.boolean(), fc.boolean(), (hasArchitecture, hasBlueprint) => {
+        const states = computeButtonStates({
+          hasArchitecture,
+          hasBlueprint,
+          currentChapter: 1,
+          chapterStatuses: {},
+          totalChapters: 10,
+        });
         expect(states.blueprintDisabled).toBe(!hasArchitecture);
         expect(states.draftDisabled).toBe(!hasBlueprint);
-        expect(states.finalizeDisabled).toBe(!hasDraft);
+        expect(states.finalizeDisabled).toBe(true); // No draft by default
+      })
+    );
+  });
+
+  it("enables finalize when draft exists", () => {
+    fc.assert(
+      fc.property(fc.boolean(), fc.boolean(), (hasArchitecture, hasBlueprint) => {
+        const states = computeButtonStates({
+          hasArchitecture,
+          hasBlueprint,
+          currentChapter: 1,
+          chapterStatuses: { 1: { status: "draft-pending" } },
+          totalChapters: 10,
+        });
+        expect(states.finalizeDisabled).toBe(false);
       })
     );
   });

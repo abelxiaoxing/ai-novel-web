@@ -92,7 +92,8 @@ def finalize_chapter(
                     embedding_model_name
                 ),
                 new_chapter=chapter_text,
-                filepath=filepath
+                filepath=filepath,
+                chapter_number=novel_number
             )
         except Exception as e:
             logging.warning(f"Vector store update failed, skipping: {e}")

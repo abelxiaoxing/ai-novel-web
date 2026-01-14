@@ -54,11 +54,19 @@ def init_vector_store(embedding_adapter, texts, filepath: str):
     在 filepath 下创建/加载一个 Chroma 向量库并插入 texts。
     如果Embedding失败，则返回 None，不中断任务。
     """
+    docs = [Document(page_content=str(t)) for t in texts]
+    return init_vector_store_from_docs(embedding_adapter, docs, filepath)
+
+
+def init_vector_store_from_docs(embedding_adapter, documents, filepath: str):
+    """
+    在 filepath 下创建/加载一个 Chroma 向量库并插入 documents。
+    如果Embedding失败，则返回 None，不中断任务。
+    """
     from langchain.embeddings.base import Embeddings as LCEmbeddings
 
     store_dir = get_vectorstore_dir(filepath)
     os.makedirs(store_dir, exist_ok=True)
-    documents = [Document(page_content=str(t)) for t in texts]
 
     try:
         class LCEmbeddingWrapper(LCEmbeddings):
@@ -181,10 +189,11 @@ def split_text_for_vectorstore(chapter_text: str, max_length: int = 500, similar
     
     return final_segments
 
-def update_vector_store(embedding_adapter, new_chapter: str, filepath: str):
+def update_vector_store(embedding_adapter, new_chapter: str, filepath: str, chapter_number: int = None):
     """
     将最新章节文本插入到向量库中。
     若库不存在则初始化；若初始化/更新失败，则跳过。
+    如果提供 chapter_number，会先删除该章节的旧文档再添加新文档（支持重新定稿）。
     """
     from utils import read_file, clear_file_content, save_string_to_txt
     splitted_texts = split_text_for_vectorstore(new_chapter)
@@ -192,10 +201,12 @@ def update_vector_store(embedding_adapter, new_chapter: str, filepath: str):
         logging.warning("No valid text to insert into vector store. Skipping.")
         return
 
+    metadata = {"chapter": chapter_number} if chapter_number else {}
     store = load_vector_store(embedding_adapter, filepath)
     if not store:
         logging.info("Vector store does not exist or failed to load. Initializing a new one for new chapter...")
-        store = init_vector_store(embedding_adapter, splitted_texts, filepath)
+        docs = [Document(page_content=str(t), metadata=metadata) for t in splitted_texts]
+        store = init_vector_store_from_docs(embedding_adapter, docs, filepath)
         if not store:
             logging.warning("Init vector store failed, skip embedding.")
         else:
@@ -203,7 +214,18 @@ def update_vector_store(embedding_adapter, new_chapter: str, filepath: str):
         return
 
     try:
-        docs = [Document(page_content=str(t)) for t in splitted_texts]
+        # 如果提供了章节号，先删除该章节的旧文档
+        if chapter_number is not None:
+            try:
+                collection = store._collection
+                existing = collection.get(where={"chapter": chapter_number})
+                if existing and existing["ids"]:
+                    collection.delete(ids=existing["ids"])
+                    logging.info(f"Deleted {len(existing['ids'])} old documents for chapter {chapter_number}.")
+            except Exception as e:
+                logging.warning(f"Failed to delete old chapter documents: {e}")
+
+        docs = [Document(page_content=str(t), metadata=metadata) for t in splitted_texts]
         store.add_documents(docs)
         logging.info("Vector store updated with the new chapter splitted segments.")
     except Exception as e:
