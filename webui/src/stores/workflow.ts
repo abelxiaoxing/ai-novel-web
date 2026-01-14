@@ -263,9 +263,12 @@ export const useWorkflowStore = defineStore("workflow", {
 
     /**
      * Mark current chapter as finalized
+     * 同时从 completedSteps 移除 draft，避免切换章节后仍认为 draft 已完成
      */
     finalizeChapter(): void {
       this.setChapterStatus(this.currentChapter, "finalized");
+      // 移除 draft 步骤，因为 draft 是针对特定章节的
+      this.completedSteps = this.completedSteps.filter((s) => s !== "draft");
     },
 
     /**

@@ -1232,14 +1232,23 @@ watch(
           if (action === "blueprint") {
             await loadBlueprintContent();
           }
-          if (action === "draft" || action === "finalize") {
+          // 定稿完成后切换章节
+          if (action === "finalize") {
             advanceChapter(false);
           }
+          // 批量生成完成后切换章节到最后一章+1
           if (action === "batch") {
             batchRunning.value = false;
             batchCancelRequested.value = false;
             batchProgress.value.current = batchProgress.value.total;
             batchSummary.value = buildBatchSummary(task);
+            // 切换到批量生成的最后一章的下一章
+            const batchEnd = batchConfig.value?.end ?? 0;
+            if (batchEnd > 0) {
+              workflowStore.setCurrentChapter(batchEnd + 1);
+              form.chapterNumber = String(workflowStore.currentChapter);
+              clearChapterFields();
+            }
             queueSaveState();
           }
           const stepToastMap: Record<string, string> = {
