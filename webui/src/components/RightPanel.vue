@@ -136,8 +136,8 @@
         <div class="action-row">
           <button
             class="btn btn-ghost"
-            :disabled="workflowStore.hasAnyPendingDraft()"
-            :title="workflowStore.hasAnyPendingDraft() ? '请先完成定稿' : ''"
+            :disabled="workflowStore.hasAnyPendingDraft"
+            :title="workflowStore.hasAnyPendingDraft ? '请先完成定稿' : ''"
             @click="$emit('run', 'batch')"
           >批量生成</button>
         </div>
