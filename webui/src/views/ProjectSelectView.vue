@@ -1,53 +1,161 @@
 <template>
-  <div class="project-view fade-in">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">智能小说生成器</p>
-        <h1>选择你的故事宇宙</h1>
-        <p class="muted">
-          在一个工作台中管理项目、打磨章节草稿、保持创作节奏。
+  <div class="project-view">
+    <!-- 背景装饰 -->
+    <div class="ambient-bg">
+      <div class="ambient-orb orb-1"></div>
+      <div class="ambient-orb orb-2"></div>
+      <div class="ambient-orb orb-3"></div>
+    </div>
+
+    <!-- 顶部标题区域 -->
+    <header class="hero-section fade-in-up">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+          <span>智能小说生成器</span>
+        </div>
+        <h1 class="hero-title">
+          <span class="title-gradient">选择你的故事宇宙</span>
+        </h1>
+        <p class="hero-subtitle">
+          在一个工作台中管理项目、打磨章节草稿、保持创作节奏
         </p>
       </div>
       <div class="hero-actions">
-        <button class="btn btn-primary" @click="showCreate = true">新建项目</button>
-        <button class="btn btn-ghost" @click="refresh">刷新</button>
+        <button class="btn btn-primary btn-large" @click="showCreate = true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          <span>新建项目</span>
+        </button>
+        <button class="btn btn-ghost btn-icon" @click="refresh" title="刷新项目列表">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+        </button>
       </div>
     </header>
 
-    <section class="project-controls">
-      <label class="search-field">
-        <span class="field-label">搜索项目</span>
-        <input class="input-field" v-model="searchQuery" placeholder="输入项目名称" />
-      </label>
-      <label class="sort-field">
-        <span class="field-label">排序</span>
-        <select class="select-field" v-model="sortKey">
-          <option value="name">名称</option>
-          <option value="created_at">创建时间</option>
-          <option value="updated_at">更新时间</option>
-        </select>
-      </label>
+    <!-- 控制栏 -->
+    <section class="controls-section fade-in-up" style="--delay: 0.1s">
+      <div class="search-wrapper">
+        <div class="search-field">
+          <div class="search-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </div>
+          <input
+            class="search-input"
+            v-model="searchQuery"
+            placeholder="搜索项目名称..."
+            autocomplete="off"
+          />
+          <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="sort-wrapper">
+        <div class="sort-field">
+          <label class="sort-label">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="9" x2="20" y2="9"/>
+              <line x1="4" y1="15" x2="20" y2="15"/>
+              <line x1="10" y1="3" x2="8" y2="21"/>
+              <line x1="16" y1="3" x2="14" y2="21"/>
+            </svg>
+            <span>排序</span>
+          </label>
+          <select class="sort-select" v-model="sortKey">
+            <option value="name">名称</option>
+            <option value="created_at">创建时间</option>
+            <option value="updated_at">更新时间</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="results-count" v-if="visibleProjects.length">
+        <span class="count-number">{{ visibleProjects.length }}</span>
+        <span class="count-label">个项目</span>
+      </div>
     </section>
 
-    <section class="project-grid">
+    <!-- 加载状态 -->
+    <transition name="fade">
+      <div v-if="projectStore.loading" class="loading-wrapper">
+        <div class="loading-spinner">
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+        </div>
+        <p class="loading-text">正在加载你的故事宇宙...</p>
+      </div>
+    </transition>
+
+    <!-- 项目网格 -->
+    <transition-group name="list" tag="section" class="project-grid">
       <ProjectCard
         v-for="(project, index) in visibleProjects"
         :key="project.id"
         :project="project"
-        class="stagger-item"
-        :style="{ '--delay': `${index * 80}ms` }"
+        :style="{ '--delay': `${index * 60}ms` }"
         @open="openProject(project.id)"
         @delete="confirmDelete(project.id, project.name)"
       />
-      <div v-if="!projectStore.projects.length" class="empty-state">
-        还没有项目，先创建一个开始吧。
+    </transition-group>
+
+    <!-- 空状态 -->
+    <transition name="fade">
+      <div v-if="!projectStore.loading && !visibleProjects.length" class="empty-state">
+        <div class="empty-illustration">
+          <div class="illustration-orbs">
+            <div class="orb orb-1"></div>
+            <div class="orb orb-2"></div>
+            <div class="orb orb-3"></div>
+          </div>
+          <div class="illustration-book">
+            <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              <line x1="12" y1="6" x2="12" y2="18"/>
+              <path d="M8 9l4-3 4 3"/>
+            </svg>
+          </div>
+        </div>
+        <h3 class="empty-title">还没有故事在等待被发现</h3>
+        <p class="empty-description">
+          {{ searchQuery ? '没有找到匹配的项目，试试其他关键词' : '创建一个新项目，开始你的创作之旅' }}
+        </p>
+        <button v-if="!searchQuery" class="btn btn-primary btn-large" @click="showCreate = true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          <span>创建第一个项目</span>
+        </button>
+        <button v-else class="btn btn-ghost" @click="searchQuery = ''">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          <span>清除搜索</span>
+        </button>
       </div>
-    </section>
+    </transition>
 
-    <div v-if="projectStore.loading" class="loading-banner">
-      正在加载项目...
-    </div>
-
+    <!-- 创建项目弹窗 -->
     <CreateProjectModal
       v-if="showCreate"
       @close="showCreate = false"
@@ -171,81 +279,534 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 32px;
+  position: relative;
+  min-height: 100vh;
 }
 
-.hero {
+/* 背景装饰 */
+.ambient-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.ambient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.4;
+  animation: float 20s ease-in-out infinite;
+}
+
+.orb-1 {
+  width: 400px;
+  height: 400px;
+  background: rgba(126, 91, 255, 0.2);
+  top: -100px;
+  right: -100px;
+  animation-delay: 0s;
+}
+
+.orb-2 {
+  width: 300px;
+  height: 300px;
+  background: rgba(167, 139, 250, 0.15);
+  bottom: 10%;
+  left: -50px;
+  animation-delay: -7s;
+}
+
+.orb-3 {
+  width: 200px;
+  height: 200px;
+  background: rgba(126, 91, 255, 0.1);
+  top: 40%;
+  right: 20%;
+  animation-delay: -14s;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(20px, -30px) scale(1.05); }
+  50% { transform: translate(-10px, 20px) scale(0.95); }
+  75% { transform: translate(30px, 10px) scale(1.02); }
+}
+
+/* 英雄区域 */
+.hero-section {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: 32px;
+  flex-wrap: wrap;
 }
 
-.hero h1 {
-  margin: 6px 0 12px 0;
-  font-size: clamp(28px, 4vw, 44px);
-}
-
-.eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.28em;
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(126, 91, 255, 0.1);
+  border: 1px solid rgba(126, 91, 255, 0.2);
+  border-radius: 999px;
   font-size: 12px;
+  font-weight: 600;
   color: var(--accent-bright);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 16px;
+}
+
+.hero-title {
   margin: 0;
+  font-size: clamp(32px, 5vw, 52px);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.title-gradient {
+  background: linear-gradient(
+    135deg,
+    var(--text) 0%,
+    var(--accent-bright) 50%,
+    var(--accent) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-subtitle {
+  margin: 16px 0 0 0;
+  font-size: 16px;
+  color: var(--text-muted);
+  max-width: 500px;
+  line-height: 1.6;
 }
 
 .hero-actions {
   display: flex;
   gap: 12px;
+  align-items: center;
 }
 
-.project-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 20px;
-}
-
-.project-controls {
+/* 控制栏 */
+.controls-section {
   display: flex;
+  align-items: center;
+  gap: 20px;
   flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
+  padding: 24px;
+  background: rgba(28, 21, 48, 0.6);
+  border: 1px solid rgba(126, 91, 255, 0.1);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(10px);
 }
 
-.search-field,
+.search-wrapper {
+  flex: 1;
+  min-width: 280px;
+  max-width: 400px;
+}
+
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 16px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-input {
+  width: 100%;
+  padding: 14px 44px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(126, 91, 255, 0.2);
+  background: rgba(15, 11, 22, 0.6);
+  color: var(--text);
+  font-size: 15px;
+  transition: all 0.3s ease;
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: rgba(126, 91, 255, 0.5);
+  background: rgba(15, 11, 22, 0.8);
+  box-shadow: 0 0 0 4px rgba(126, 91, 255, 0.1);
+}
+
+.search-clear {
+  position: absolute;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(126, 91, 255, 0.1);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.search-clear:hover {
+  background: rgba(126, 91, 255, 0.2);
+  color: var(--accent-bright);
+}
+
+.sort-wrapper {
+  min-width: 160px;
+}
+
 .sort-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 180px;
 }
 
-.field-label {
-  font-size: 12px;
+.sort-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
 }
 
+.sort-select {
+  padding: 12px 36px 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(126, 91, 255, 0.2);
+  background: rgba(15, 11, 22, 0.6) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b9b0d6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 12px center;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  appearance: none;
+  transition: all 0.3s ease;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: rgba(126, 91, 255, 0.5);
+  background-color: rgba(15, 11, 22, 0.8);
+}
+
+.results-count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-left: 16px;
+  border-left: 1px solid rgba(126, 91, 255, 0.15);
+  margin-left: auto;
+}
+
+.count-number {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--accent-bright);
+}
+
+.count-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* 项目网格 */
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 24px;
+}
+
+/* 加载状态 */
+.loading-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  gap: 24px;
+}
+
+.loading-spinner {
+  position: relative;
+  width: 60px;
+  height: 60px;
+}
+
+.spinner-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: var(--accent);
+  animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+.spinner-ring:nth-child(2) {
+  width: 80%;
+  height: 80%;
+  top: 10%;
+  left: 10%;
+  border-top-color: var(--accent-bright);
+  animation-duration: 1s;
+  animation-direction: reverse;
+}
+
+.spinner-ring:nth-child(3) {
+  width: 60%;
+  height: 60%;
+  top: 20%;
+  left: 20%;
+  border-top-color: rgba(126, 91, 255, 0.4);
+  animation-duration: 0.8s;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+/* 空状态 */
 .empty-state {
-  border: 1px dashed rgba(229, 225, 245, 0.2);
-  border-radius: var(--radius-lg);
-  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
   text-align: center;
+  gap: 20px;
+}
+
+.empty-illustration {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.illustration-orbs {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.illustration-orbs .orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(30px);
+  opacity: 0.5;
+}
+
+.illustration-orbs .orb-1 {
+  width: 80px;
+  height: 80px;
+  background: rgba(126, 91, 255, 0.3);
+  top: 0;
+  left: 20px;
+  animation: float 4s ease-in-out infinite;
+}
+
+.illustration-orbs .orb-2 {
+  width: 60px;
+  height: 60px;
+  background: rgba(167, 139, 250, 0.25);
+  bottom: 10px;
+  right: 10px;
+  animation: float 4s ease-in-out infinite 1s;
+}
+
+.illustration-orbs .orb-3 {
+  width: 40px;
+  height: 40px;
+  background: rgba(126, 91, 255, 0.2);
+  bottom: 30px;
+  left: 10px;
+  animation: float 4s ease-in-out infinite 2s;
+}
+
+.illustration-book {
+  position: relative;
+  z-index: 1;
+  padding: 24px;
+  background: rgba(28, 21, 48, 0.8);
+  border: 1px solid rgba(126, 91, 255, 0.2);
+  border-radius: var(--radius-lg);
   color: var(--text-muted);
 }
 
-.loading-banner {
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: rgba(126, 91, 255, 0.16);
-  border: 1px solid rgba(126, 91, 255, 0.35);
-  color: var(--text-muted);
+.empty-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
 }
 
-@media (max-width: 720px) {
-  .hero {
+.empty-description {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-muted);
+  max-width: 400px;
+}
+
+/* 按钮样式 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 14px;
+  border: 1px solid transparent;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #5d3bff);
+  color: #f2edff;
+  box-shadow: 0 8px 20px rgba(126, 91, 255, 0.25);
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(126, 91, 255, 0.35);
+}
+
+.btn-large {
+  padding: 16px 28px;
+  font-size: 15px;
+}
+
+.btn-ghost {
+  background: rgba(126, 91, 255, 0.08);
+  border: 1px solid rgba(126, 91, 255, 0.25);
+  color: var(--text);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(126, 91, 255, 0.15);
+  border-color: rgba(126, 91, 255, 0.4);
+}
+
+.btn-icon {
+  padding: 12px;
+}
+
+/* 动画 */
+.fade-in-up {
+  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation-delay: var(--delay, 0s);
+  opacity: 0;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+}
+
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.list-move {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .hero-section {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+  }
+
+  .hero-actions {
+    justify-content: flex-start;
+  }
+
+  .controls-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-wrapper {
+    max-width: none;
+  }
+
+  .results-count {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: none;
+    padding-top: 16px;
+    border-top: 1px solid rgba(126, 91, 255, 0.1);
+    width: 100%;
+    justify-content: center;
+  }
+
+  .project-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
