@@ -1,25 +1,6 @@
 <template>
   <div class="project-view">
     <SpaceBackground />
-    <div class="hud-overlay" aria-hidden="true">
-      <div class="hud-corner hud-top-left">
-        <span class="hud-label">DIR/INDEX</span>
-        <span class="hud-value">ALPHA-07</span>
-      </div>
-      <div class="hud-corner hud-top-right">
-        <span class="hud-label">SYNC</span>
-        <span class="hud-value">98.4%</span>
-      </div>
-      <div class="hud-corner hud-bottom-left">
-        <span class="hud-label">NODE</span>
-        <span class="hud-value">QX-19</span>
-      </div>
-      <div class="hud-corner hud-bottom-right">
-        <span class="hud-label">LAT</span>
-        <span class="hud-value">0.32ms</span>
-      </div>
-      <div class="hud-scanline"></div>
-    </div>
 
     <!-- 顶部标题区域 -->
     <header class="hero-section fade-in-up">
@@ -293,8 +274,6 @@ watch(
   --accent: #2f9bff;
   --accent-bright: #7dd3ff;
   --accent-muted: rgba(47, 155, 255, 0.18);
-  --hud-line: rgba(125, 205, 255, 0.45);
-  --hud-line-soft: rgba(125, 205, 255, 0.2);
   --panel-veil: rgba(8, 12, 18, 0.72);
   --panel-veil-strong: rgba(8, 12, 18, 0.84);
   --panel-border: rgba(95, 170, 230, 0.28);
@@ -321,151 +300,11 @@ watch(
   z-index: 1;
 }
 
-/* HUD 覆盖层 */
-.hud-overlay {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.hud-overlay::before,
-.hud-overlay::after {
-  content: "";
-  position: absolute;
-  left: 32px;
-  right: 32px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--hud-line), transparent);
-  opacity: 0.6;
-}
-
-.hud-overlay::before {
-  top: 28px;
-}
-
-.hud-overlay::after {
-  bottom: 28px;
-}
-
-.hud-corner {
-  position: absolute;
-  width: 180px;
-  height: 90px;
-  padding: 14px 16px;
-  color: var(--accent-bright);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.hud-corner::after {
-  content: "";
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  background: var(--hud-line);
-  border-radius: 50%;
-}
-
-.hud-top-left {
-  top: 24px;
-  left: 24px;
-  border-top: 1px solid var(--hud-line);
-  border-left: 1px solid var(--hud-line);
-}
-
-.hud-top-left::after {
-  top: -4px;
-  left: -4px;
-}
-
-.hud-top-right {
-  top: 24px;
-  right: 24px;
-  border-top: 1px solid var(--hud-line);
-  border-right: 1px solid var(--hud-line);
-  align-items: flex-end;
-  text-align: right;
-}
-
-.hud-top-right::after {
-  top: -4px;
-  right: -4px;
-}
-
-.hud-bottom-left {
-  bottom: 24px;
-  left: 24px;
-  border-bottom: 1px solid var(--hud-line);
-  border-left: 1px solid var(--hud-line);
-}
-
-.hud-bottom-left::after {
-  bottom: -4px;
-  left: -4px;
-}
-
-.hud-bottom-right {
-  bottom: 24px;
-  right: 24px;
-  border-bottom: 1px solid var(--hud-line);
-  border-right: 1px solid var(--hud-line);
-  align-items: flex-end;
-  text-align: right;
-}
-
-.hud-bottom-right::after {
-  bottom: -4px;
-  right: -4px;
-}
-
-.hud-label {
-  color: var(--text-muted);
-  opacity: 0.8;
-}
-
-.hud-value {
-  font-size: 13px;
-  letter-spacing: 0.2em;
-}
-
-.hud-scanline {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  top: 45%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--hud-line-soft), transparent);
-  opacity: 0.2;
-  animation: scanline 8s linear infinite;
-}
-
 @keyframes float {
   0%, 100% { transform: translate(0, 0) scale(1); }
   25% { transform: translate(20px, -30px) scale(1.05); }
   50% { transform: translate(-10px, 20px) scale(0.95); }
   75% { transform: translate(30px, 10px) scale(1.02); }
-}
-
-@keyframes scanline {
-  0% {
-    transform: translateY(-20vh);
-    opacity: 0;
-  }
-  25% {
-    opacity: 0.35;
-  }
-  55% {
-    opacity: 0.18;
-  }
-  100% {
-    transform: translateY(30vh);
-    opacity: 0;
-  }
 }
 
 /* 英雄区域 */
@@ -920,10 +759,7 @@ watch(
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hud-scanline {
-    animation: none;
-    opacity: 0.12;
-  }
+  /* 运动减少偏好设置 */
 }
 
 /* 响应式 */
@@ -940,20 +776,6 @@ watch(
   .controls-section {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .hud-overlay {
-    opacity: 0.55;
-  }
-
-  .hud-corner {
-    width: 140px;
-    height: 70px;
-    font-size: 10px;
-  }
-
-  .hud-scanline {
-    display: none;
   }
 
   .search-wrapper {
