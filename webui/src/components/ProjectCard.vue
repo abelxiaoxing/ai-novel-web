@@ -128,10 +128,10 @@ const formattedUpdatedAt = computed(() => {
   border-radius: var(--radius-lg);
   background: linear-gradient(
     145deg,
-    rgba(28, 21, 48, 0.95) 0%,
-    rgba(16, 12, 26, 0.98) 100%
+    var(--card-surface-start, rgba(28, 21, 48, 0.95)) 0%,
+    var(--card-surface-end, rgba(16, 12, 26, 0.98)) 100%
   );
-  border: 1px solid rgba(126, 91, 255, 0.15);
+  border: 1px solid var(--card-border, rgba(126, 91, 255, 0.15));
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -149,7 +149,7 @@ const formattedUpdatedAt = computed(() => {
   height: 200%;
   background: radial-gradient(
     circle at 30% 20%,
-    rgba(126, 91, 255, 0.08) 0%,
+    var(--card-glow, rgba(126, 91, 255, 0.08)) 0%,
     transparent 50%
   );
   opacity: 0;
@@ -159,10 +159,10 @@ const formattedUpdatedAt = computed(() => {
 
 .project-card:hover {
   transform: translateY(-6px);
-  border-color: rgba(126, 91, 255, 0.4);
+  border-color: var(--card-border-strong, rgba(126, 91, 255, 0.4));
   box-shadow:
     0 20px 40px rgba(0, 0, 0, 0.4),
-    0 0 30px rgba(126, 91, 255, 0.15),
+    0 0 30px var(--card-glow-strong, rgba(126, 91, 255, 0.15)),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
@@ -177,7 +177,7 @@ const formattedUpdatedAt = computed(() => {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: rgba(126, 91, 255, 0.1);
+  background: var(--card-icon-bg, rgba(126, 91, 255, 0.1));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -186,7 +186,7 @@ const formattedUpdatedAt = computed(() => {
 }
 
 .project-card:hover .card-icon {
-  background: rgba(126, 91, 255, 0.2);
+  background: var(--card-icon-bg-strong, rgba(126, 91, 255, 0.2));
   transform: scale(1.05);
 }
 
@@ -227,9 +227,9 @@ const formattedUpdatedAt = computed(() => {
   flex-direction: column;
   gap: 10px;
   padding: 16px;
-  background: rgba(15, 11, 22, 0.5);
+  background: var(--card-panel, rgba(15, 11, 22, 0.5));
   border-radius: var(--radius-md);
-  border: 1px solid rgba(126, 91, 255, 0.08);
+  border: 1px solid var(--card-border-soft, rgba(126, 91, 255, 0.08));
 }
 
 .progress-header {
@@ -253,7 +253,7 @@ const formattedUpdatedAt = computed(() => {
 
 .progress-bar {
   height: 6px;
-  background: rgba(126, 91, 255, 0.15);
+  background: var(--card-progress-bg, rgba(126, 91, 255, 0.15));
   border-radius: 999px;
   overflow: hidden;
 }
@@ -296,7 +296,7 @@ const formattedUpdatedAt = computed(() => {
   align-items: center;
   justify-content: space-between;
   padding-top: 8px;
-  border-top: 1px solid rgba(126, 91, 255, 0.08);
+  border-top: 1px solid var(--card-border-soft, rgba(126, 91, 255, 0.08));
 }
 
 .stat-item {
@@ -322,7 +322,7 @@ const formattedUpdatedAt = computed(() => {
 .stat-divider {
   width: 1px;
   height: 24px;
-  background: rgba(126, 91, 255, 0.15);
+  background: var(--card-progress-bg, rgba(126, 91, 255, 0.15));
 }
 
 /* 卡片底部 */
@@ -331,7 +331,7 @@ const formattedUpdatedAt = computed(() => {
   align-items: center;
   justify-content: space-between;
   padding-top: 16px;
-  border-top: 1px solid rgba(126, 91, 255, 0.08);
+  border-top: 1px solid var(--card-border-soft, rgba(126, 91, 255, 0.08));
 }
 
 .time-info {
@@ -357,8 +357,8 @@ const formattedUpdatedAt = computed(() => {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  border: 1px solid rgba(126, 91, 255, 0.2);
-  background: rgba(126, 91, 255, 0.08);
+  border: 1px solid var(--card-border, rgba(126, 91, 255, 0.2));
+  background: var(--card-action-bg, rgba(126, 91, 255, 0.08));
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -367,9 +367,9 @@ const formattedUpdatedAt = computed(() => {
 }
 
 .action-btn:hover {
-  background: rgba(126, 91, 255, 0.2);
+  background: var(--card-action-bg-strong, rgba(126, 91, 255, 0.2));
   color: var(--accent-bright);
-  border-color: rgba(126, 91, 255, 0.4);
+  border-color: var(--card-border-strong, rgba(126, 91, 255, 0.4));
   transform: scale(1.05);
 }
 
@@ -401,7 +401,7 @@ const formattedUpdatedAt = computed(() => {
   border-radius: 50%;
   background: radial-gradient(
     circle at 30% 30%,
-    rgba(126, 91, 255, 0.15) 0%,
+    var(--card-glow, rgba(126, 91, 255, 0.15)) 0%,
     transparent 70%
   );
   filter: blur(20px);
