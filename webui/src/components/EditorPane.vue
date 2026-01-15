@@ -8,7 +8,6 @@
       <div class="editor-meta">
         <span class="muted">{{ charCount }} 字</span>
         <span :class="['save-status', saveStatusClass]">{{ saveStatusText }}</span>
-        <button class="btn btn-outline" @click="handleManualSave">保存</button>
       </div>
     </div>
     <div class="editor-body">

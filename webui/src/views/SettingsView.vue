@@ -77,8 +77,8 @@
           </select>
         </label>
         <p v-if="chooseError" class="form-error">{{ chooseError }}</p>
+        <p v-if="chooseSaving" class="form-muted">保存中...</p>
         <div class="action-row">
-          <button class="btn btn-primary" @click="saveChooseConfigs" :disabled="chooseSaving">保存</button>
           <button class="btn btn-outline" @click="chooseModalOpen = false">关闭</button>
         </div>
       </div>
@@ -109,12 +109,10 @@
         </div>
         <p v-if="configError" class="form-error">{{ configError }}</p>
         <p v-if="configTestMessage" :class="configTestClass">{{ configTestMessage }}</p>
+        <p v-if="configSaving" class="form-muted">保存中...</p>
         <div class="action-row">
           <button class="btn btn-outline" @click="testConfig" :disabled="configSaving || configTesting">
             测试模型
-          </button>
-          <button class="btn btn-primary" @click="saveConfig" :disabled="configSaving">
-            保存当前
           </button>
           <button class="btn btn-ghost" @click="createConfig" :disabled="configSaving">
             新建配置
@@ -164,8 +162,8 @@
           </label>
         </div>
         <p v-if="proxyError" class="form-error">{{ proxyError }}</p>
+        <p v-if="proxySaving" class="form-muted">保存中...</p>
         <div class="action-row">
-          <button class="btn btn-primary" @click="saveProxySettings" :disabled="proxySaving">保存配置</button>
           <button class="btn btn-outline" @click="proxyModalOpen = false">关闭</button>
         </div>
       </div>
@@ -174,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import ModalShell from "@/components/ModalShell.vue";
 import { useConfigStore } from "@/stores/config";
 import {
@@ -212,6 +210,7 @@ const configTestMessage = ref("");
 const configTestStatus = ref<"success" | "failed" | "pending" | "">("");
 const configSaving = ref(false);
 const configTesting = ref(false);
+let configSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 const chooseForm = reactive({
   architecture_llm: "",
@@ -223,6 +222,30 @@ const chooseForm = reactive({
 });
 const chooseError = ref("");
 const chooseSaving = ref(false);
+let chooseSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 自动保存模型选择配置
+watch(
+  chooseForm,
+  () => {
+    if (chooseSaveTimer) {
+      clearTimeout(chooseSaveTimer);
+    }
+    chooseError.value = "";
+    chooseSaveTimer = setTimeout(async () => {
+      try {
+        chooseSaving.value = true;
+        await updateChooseConfigs({ ...chooseForm });
+        await configStore.fetchConfigs();
+      } catch (error) {
+        chooseError.value = error instanceof Error ? error.message : "自动保存失败";
+      } finally {
+        chooseSaving.value = false;
+      }
+    }, 800);
+  },
+  { deep: true }
+);
 
 const proxyForm = reactive({
   proxy_url: "",
@@ -234,6 +257,40 @@ const proxyForm = reactive({
 });
 const proxyError = ref("");
 const proxySaving = ref(false);
+let proxySaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 自动保存代理设置
+watch(
+  proxyForm,
+  () => {
+    if (proxySaveTimer) {
+      clearTimeout(proxySaveTimer);
+    }
+    proxyError.value = "";
+    proxySaveTimer = setTimeout(async () => {
+      try {
+        proxySaving.value = true;
+        await Promise.all([
+          updateProxyConfig({
+            proxy_url: proxyForm.proxy_url,
+            proxy_port: proxyForm.proxy_port,
+            enabled: proxyForm.enabled,
+          }),
+          updateWebdavConfig({
+            webdav_url: proxyForm.webdav_url,
+            webdav_username: proxyForm.webdav_username,
+            webdav_password: proxyForm.webdav_password,
+          }),
+        ]);
+      } catch (error) {
+        proxyError.value = error instanceof Error ? error.message : "保存代理配置失败";
+      } finally {
+        proxySaving.value = false;
+      }
+    }, 800);
+  },
+  { deep: true }
+);
 
 const configModalTitle = computed(() =>
   activeConfigType.value === "llm" ? "大模型配置管理" : "向量配置管理"
@@ -343,6 +400,36 @@ const parseConfigJson = () => {
     return null;
   }
 };
+
+// 自动保存配置编辑器
+watch(configJson, () => {
+  if (configSaveTimer) {
+    clearTimeout(configSaveTimer);
+  }
+  if (!selectedConfigName.value) {
+    return;
+  }
+  configSaveTimer = setTimeout(async () => {
+    const payload = parseConfigJson();
+    if (!payload) {
+      return;
+    }
+    configSaving.value = true;
+    try {
+      if (activeConfigType.value === "llm") {
+        await updateLlmConfig(selectedConfigName.value, payload);
+      } else {
+        await updateEmbeddingConfig(selectedConfigName.value, payload);
+      }
+      await loadConfigs();
+      await configStore.fetchConfigs();
+    } catch (error) {
+      configError.value = error instanceof Error ? error.message : "保存配置失败";
+    } finally {
+      configSaving.value = false;
+    }
+  }, 1000);
+});
 
 const testConfig = async () => {
   const payload = parseConfigJson();

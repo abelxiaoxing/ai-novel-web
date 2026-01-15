@@ -7,7 +7,6 @@
     </div>
     <div class="top-actions">
       <button class="btn btn-ghost" @click="$emit('projects')">项目列表</button>
-      <button class="btn btn-ghost" @click="$emit('save')">保存</button>
       <button class="btn btn-primary" @click="$emit('settings')">设置</button>
     </div>
   </header>

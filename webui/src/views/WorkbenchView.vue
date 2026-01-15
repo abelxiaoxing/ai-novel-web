@@ -15,7 +15,6 @@
         :status-label="statusLabel"
         :status-variant="statusVariant"
         @projects="goProjects"
-        @save="handleSaveActiveFile"
         @settings="goSettings"
       />
 
@@ -69,24 +68,6 @@
         @rename="handleFileRename"
         @delete="handleFileDelete"
       />
-
-      <aside v-else-if="activeTool === 'roles'" class="sidebar panel">
-        <div class="panel-header">
-          <div class="panel-title">角色库</div>
-          <span class="muted">说明</span>
-        </div>
-        <div class="sidebar-body">
-          <div class="section panel-section">
-            <p class="panel-note">
-              角色库管理尚未接入 Web API。你可以先在草稿生成时手动填写核心人物，或通过桌面端维护角色库。
-            </p>
-            <div class="panel-actions">
-              <button class="btn btn-ghost" @click="activeTool = 'files'">查看文件</button>
-              <button class="btn btn-outline" @click="goSettings">设置模型</button>
-            </div>
-          </div>
-        </div>
-      </aside>
 
       <EditorPane
         :title="editorTitle"
