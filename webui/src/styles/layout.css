@@ -1,6 +1,6 @@
 .app-grid {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  grid-template-columns: 120px minmax(0, 1fr) 320px;
   grid-template-rows: 56px minmax(0, 1fr) 190px;
   gap: 12px;
   padding: 16px;

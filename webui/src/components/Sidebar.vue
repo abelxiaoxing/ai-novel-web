@@ -2,7 +2,6 @@
   <aside class="sidebar panel">
     <div class="panel-header">
       <div class="panel-title">项目文件</div>
-      <span class="muted">{{ fileCount }} 项</span>
     </div>
     <div class="sidebar-body">
       <FileTree
