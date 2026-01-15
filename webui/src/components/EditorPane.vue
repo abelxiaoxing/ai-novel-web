@@ -130,7 +130,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .editor {
-  grid-column: 3 / 4;
+  grid-column: 2 / 3;
   grid-row: 2 / 3;
   display: flex;
   flex-direction: column;

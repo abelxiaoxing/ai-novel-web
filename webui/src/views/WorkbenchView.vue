@@ -14,53 +14,13 @@
         :genre="projectStore.currentProject?.genre"
         :status-label="statusLabel"
         :status-variant="statusVariant"
+        :file-count="fileCount"
+        :chapter-count="chapterCount"
         @projects="goProjects"
         @settings="goSettings"
       />
 
-      <ActivityBar :active-key="activeTool" @select="handleToolSelect" />
-
-      <aside v-if="activeTool === 'workspace'" class="sidebar panel">
-        <div class="panel-header">
-          <div class="panel-title">工作区</div>
-          <span class="muted">概览</span>
-        </div>
-        <div class="sidebar-body">
-          <div class="section panel-section">
-            <div class="panel-kv">
-              <span class="panel-label">项目名称</span>
-              <span class="panel-value">{{ projectStore.currentProject?.name || "未载入" }}</span>
-            </div>
-            <div class="panel-kv">
-              <span class="panel-label">题材类型</span>
-              <span class="panel-value">{{ projectStore.currentProject?.genre || "未设置" }}</span>
-            </div>
-            <div class="panel-kv">
-              <span class="panel-label">目标章节</span>
-              <span class="panel-value">{{ projectStore.currentProject?.num_chapters ?? "未设置" }}</span>
-            </div>
-            <div class="panel-kv">
-              <span class="panel-label">目标字数</span>
-              <span class="panel-value">{{ projectStore.currentProject?.word_number ?? "未设置" }}</span>
-            </div>
-            <div class="panel-kv">
-              <span class="panel-label">文件数量</span>
-              <span class="panel-value">{{ fileCount }}</span>
-            </div>
-            <div class="panel-kv">
-              <span class="panel-label">已生成章节</span>
-              <span class="panel-value">{{ chapterCount }}</span>
-            </div>
-            <div class="panel-actions">
-              <button class="btn btn-ghost" @click="projectStore.refreshFileTree()">刷新文件</button>
-              <button class="btn btn-outline" @click="goProjects">项目列表</button>
-            </div>
-          </div>
-        </div>
-      </aside>
-
       <Sidebar
-        v-else-if="activeTool === 'files'"
         class="sidebar"
         :nodes="projectStore.fileTree"
         :active-path="projectStore.activeFile?.path"
@@ -108,7 +68,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import ActivityBar from "@/components/ActivityBar.vue";
 import BottomPanel from "@/components/BottomPanel.vue";
 import EditorPane from "@/components/EditorPane.vue";
 import GlobalProgressBar from "@/components/GlobalProgressBar.vue";
@@ -146,7 +105,6 @@ const configStore = useConfigStore();
 const toastStore = useToastStore();
 const workflowStore = useWorkflowStore();
 
-const activeTool = ref("files");
 const promptModalOpen = ref(false);
 const promptText = ref("");
 const pendingPromptTask = ref<string | null>(null);
@@ -449,9 +407,6 @@ const openOutputFile = async (fileKey: string) => {
     return;
   }
   await projectStore.openFile(target);
-  if (activeTool.value !== "files") {
-    activeTool.value = "files";
-  }
 };
 
 const formKeys: (keyof WorkbenchForm)[] = [
@@ -761,14 +716,6 @@ const goProjects = () => {
 
 const goSettings = () => {
   router.push("/settings");
-};
-
-const handleToolSelect = (tool: string) => {
-  if (tool === "settings") {
-    goSettings();
-    return;
-  }
-  activeTool.value = tool;
 };
 
 const handleFormUpdate = (nextForm: WorkbenchForm) => {
@@ -1444,52 +1391,5 @@ onMounted(async () => {
 <style scoped>
 .workbench-view {
   min-height: 100vh;
-}
-
-.sidebar {
-  grid-column: 2 / 3;
-  grid-row: 2 / 4;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.sidebar-body {
-  flex: 1;
-  overflow: hidden;
-}
-
-.panel-section {
-  gap: 14px;
-}
-
-.panel-kv {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.panel-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
-}
-
-.panel-value {
-  font-size: 14px;
-  color: var(--text);
-}
-
-.panel-note {
-  margin: 0;
-  line-height: 1.5;
-  color: var(--text-muted);
-}
-
-.panel-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 </style>

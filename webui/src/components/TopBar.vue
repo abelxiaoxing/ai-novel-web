@@ -3,6 +3,8 @@
     <div class="top-left">
       <div class="project-title">{{ projectName || "未选择项目" }}</div>
       <span v-if="genre" class="genre-tag">{{ genre }}</span>
+      <span v-if="fileCount !== undefined" class="stat-tag">文件: {{ fileCount }}</span>
+      <span v-if="chapterCount !== undefined" class="stat-tag">章节: {{ chapterCount }}</span>
       <StatusPill :label="statusLabel" :variant="statusVariant" />
     </div>
     <div class="top-actions">
@@ -20,6 +22,8 @@ defineProps<{
   genre?: string;
   statusLabel: string;
   statusVariant?: "default" | "success" | "warn" | "danger";
+  fileCount?: number;
+  chapterCount?: number;
 }>();
 
 defineEmits(["projects", "save", "settings"]);
@@ -49,6 +53,15 @@ defineEmits(["projects", "save", "settings"]);
 .genre-tag {
   background: rgba(126, 91, 255, 0.15);
   color: var(--accent-bright);
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.stat-tag {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
   padding: 2px 10px;
   border-radius: 4px;
   font-size: 12px;

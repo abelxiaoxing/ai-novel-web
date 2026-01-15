@@ -1,6 +1,6 @@
 .app-grid {
   display: grid;
-  grid-template-columns: 70px 260px minmax(0, 1fr) 320px;
+  grid-template-columns: 260px minmax(0, 1fr) 320px;
   grid-template-rows: 56px minmax(0, 1fr) 190px;
   gap: 12px;
   padding: 16px;
@@ -120,13 +120,13 @@
 
 @media (max-width: 1200px) {
   .app-grid {
-    grid-template-columns: 60px 200px minmax(0, 1fr) 280px;
+    grid-template-columns: 200px minmax(0, 1fr) 280px;
   }
 }
 
 @media (max-width: 960px) {
   .app-grid {
-    grid-template-columns: 60px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 56px minmax(0, 1fr) 220px;
   }
 
@@ -136,12 +136,12 @@
   }
 
   .editor {
-    grid-column: 2 / 3 !important;
+    grid-column: 1 / 2 !important;
     grid-row: 2 / 3 !important;
   }
 
   .bottom-panel {
-    grid-column: 2 / 3 !important;
+    grid-column: 1 / 2 !important;
     grid-row: 3 / 4 !important;
   }
 }

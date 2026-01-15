@@ -46,7 +46,7 @@ const fileCount = computed(() => {
 
 <style scoped>
 .sidebar {
-  grid-column: 2 / 3;
+  grid-column: 1 / 2;
   grid-row: 2 / 4;
   display: flex;
   flex-direction: column;
