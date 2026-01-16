@@ -172,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import ModalShell from "@/components/ModalShell.vue";
 import { useConfigStore } from "@/stores/config";
 import {
@@ -204,6 +204,7 @@ const configNames = ref<string[]>([]);
 const configMap = ref<Record<string, unknown>>({});
 const selectedConfigName = ref("");
 const configJson = ref("");
+const configJsonBaseline = ref("");
 const newConfigName = ref("");
 const configError = ref("");
 const configTestMessage = ref("");
@@ -222,6 +223,7 @@ const chooseForm = reactive({
 });
 const chooseError = ref("");
 const chooseSaving = ref(false);
+const chooseHydrating = ref(false);
 let chooseSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 自动保存模型选择配置
@@ -230,6 +232,9 @@ watch(
   () => {
     if (chooseSaveTimer) {
       clearTimeout(chooseSaveTimer);
+    }
+    if (chooseHydrating.value || !chooseModalOpen.value) {
+      return;
     }
     chooseError.value = "";
     chooseSaveTimer = setTimeout(async () => {
@@ -257,6 +262,7 @@ const proxyForm = reactive({
 });
 const proxyError = ref("");
 const proxySaving = ref(false);
+const proxyHydrating = ref(false);
 let proxySaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 自动保存代理设置
@@ -265,6 +271,9 @@ watch(
   () => {
     if (proxySaveTimer) {
       clearTimeout(proxySaveTimer);
+    }
+    if (proxyHydrating.value || !proxyModalOpen.value) {
+      return;
     }
     proxyError.value = "";
     proxySaveTimer = setTimeout(async () => {
@@ -316,11 +325,16 @@ const normalizeConfigMap = (payload: Record<string, unknown> | undefined) => {
   return payload;
 };
 
+const setConfigJson = (value: string) => {
+  configJson.value = value;
+  configJsonBaseline.value = value;
+};
+
 const refreshConfigNames = () => {
   configNames.value = Object.keys(configMap.value);
   if (!configNames.value.length) {
     selectedConfigName.value = "";
-    configJson.value = "{}";
+    setConfigJson("{}");
     configTestMessage.value = "";
     configTestStatus.value = "";
     return;
@@ -329,7 +343,7 @@ const refreshConfigNames = () => {
     selectedConfigName.value = configNames.value[0];
   }
   const entry = configMap.value[selectedConfigName.value] ?? {};
-  configJson.value = JSON.stringify(entry, null, 2);
+  setConfigJson(JSON.stringify(entry, null, 2));
   configTestMessage.value = "";
   configTestStatus.value = "";
 };
@@ -355,6 +369,7 @@ const openConfigManager = async (type: ConfigType) => {
 };
 
 const openChooseManager = () => {
+  chooseHydrating.value = true;
   chooseError.value = "";
   const choose = configStore.chooseConfigs;
   chooseForm.architecture_llm = choose.architecture_llm ?? "";
@@ -364,6 +379,9 @@ const openChooseManager = () => {
   chooseForm.consistency_llm = choose.consistency_llm ?? "";
   chooseForm.embedding = choose.embedding ?? "";
   chooseModalOpen.value = true;
+  nextTick(() => {
+    chooseHydrating.value = false;
+  });
 };
 
 const saveChooseConfigs = async () => {
@@ -384,7 +402,7 @@ const handleConfigSelect = (event: Event) => {
   const target = event.target as HTMLSelectElement;
   selectedConfigName.value = target.value;
   const entry = configMap.value[selectedConfigName.value] ?? {};
-  configJson.value = JSON.stringify(entry, null, 2);
+  setConfigJson(JSON.stringify(entry, null, 2));
   configTestMessage.value = "";
   configTestStatus.value = "";
 };
@@ -405,6 +423,9 @@ const parseConfigJson = () => {
 watch(configJson, () => {
   if (configSaveTimer) {
     clearTimeout(configSaveTimer);
+  }
+  if (!configModalOpen.value || configJson.value === configJsonBaseline.value) {
+    return;
   }
   if (!selectedConfigName.value) {
     return;
@@ -542,6 +563,7 @@ const deleteConfig = async () => {
 };
 
 const openProxyManager = async () => {
+  proxyHydrating.value = true;
   proxyModalOpen.value = true;
   proxyError.value = "";
   try {
@@ -557,6 +579,10 @@ const openProxyManager = async () => {
     proxyForm.webdav_password = String(webdavPayload.webdav_password ?? "");
   } catch (error) {
     proxyError.value = error instanceof Error ? error.message : "加载代理配置失败";
+  } finally {
+    nextTick(() => {
+      proxyHydrating.value = false;
+    });
   }
 };
 
