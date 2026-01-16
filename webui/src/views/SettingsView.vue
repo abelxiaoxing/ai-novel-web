@@ -594,32 +594,69 @@ onMounted(() => {
   padding: 48px clamp(24px, 6vw, 80px);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 32px;
+  position: relative;
+  z-index: 1;
+}
+
+.settings-header {
+  animation: fadeInUp 0.5s ease forwards;
 }
 
 .settings-header h1 {
   margin: 0 0 8px 0;
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--text) 0%, var(--accent-bright) 50%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
 }
 
 .section-card {
-  padding: 20px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  background: linear-gradient(135deg, rgba(15, 26, 40, 0.95), rgba(10, 18, 28, 0.98));
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft), var(--glow-soft);
+  transition: all 0.3s ease;
+  animation: fadeInUp 0.5s ease forwards;
+  animation-delay: calc(var(--i, 0) * 0.1s);
+  opacity: 0;
+}
+
+.section-card:nth-child(1) { --i: 1; }
+.section-card:nth-child(2) { --i: 2; }
+.section-card:nth-child(3) { --i: 3; }
+.section-card:nth-child(4) { --i: 4; }
+
+.section-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(95, 170, 230, 0.5);
+  box-shadow: var(--shadow-soft), 0 0 40px rgba(47, 155, 255, 0.2);
 }
 
 .section-card h3 {
   margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-bright);
 }
 
 .modal-header h2 {
-  margin: 0 0 8px 0;
+  margin: 0 0 4px 0;
+  color: var(--accent-bright);
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .modal-body {
@@ -628,42 +665,142 @@ onMounted(() => {
   gap: 16px;
 }
 
+/* 表单字段样式 */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.field-row .field {
+  flex: 1;
+  min-width: 140px;
+}
+
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
 .code-field {
-  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-family: var(--font-mono);
+  background: rgba(8, 14, 22, 0.9);
+  border: 1px solid rgba(95, 170, 230, 0.2);
+  color: #d4e3f5;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 200px;
+}
+
+.code-field:focus {
+  border-color: rgba(125, 211, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(47, 155, 255, 0.1);
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(95, 170, 230, 0.15);
 }
 
 .form-error {
-  color: #ef4444;
+  color: var(--danger);
   font-size: 13px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
 .form-success {
-  color: #22c55e;
+  color: var(--success);
   font-size: 13px;
+  padding: 8px 12px;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(34, 197, 94, 0.25);
 }
 
 .form-muted {
   color: var(--text-muted);
   font-size: 13px;
+  padding: 8px 12px;
+  background: rgba(139, 163, 199, 0.08);
+  border-radius: 8px;
 }
 
 .section-inline {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(229, 225, 245, 0.08);
+  gap: 14px;
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(95, 170, 230, 0.15);
 }
 
 .section-inline:last-child {
   border-bottom: none;
 }
 
-.checkbox-row {
+.section-inline h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.section-inline h3::before {
+  content: "";
+  width: 3px;
+  height: 16px;
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent));
+  border-radius: 2px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
+  padding: 8px 0;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.checkbox-row:hover {
+  color: var(--text);
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

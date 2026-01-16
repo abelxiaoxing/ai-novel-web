@@ -1,14 +1,14 @@
 :root {
-  --bg: #0f0b16;
-  --bg-alt: #171024;
-  --panel: #1c1530;
-  --panel-strong: #241a3a;
-  --panel-border: #2a2242;
-  --accent: #7e5bff;
-  --accent-bright: #a78bfa;
-  --accent-muted: rgba(126, 91, 255, 0.18);
-  --text: #e5e1f5;
-  --text-muted: #b9b0d6;
+  --bg: #0a0f15;
+  --bg-alt: #0d1420;
+  --panel: #0f1a28;
+  --panel-strong: #142232;
+  --panel-border: rgba(95, 170, 230, 0.28);
+  --accent: #2f9bff;
+  --accent-bright: #7dd3ff;
+  --accent-muted: rgba(47, 155, 255, 0.18);
+  --text: #e5eaf5;
+  --text-muted: #8ba3c7;
   --warn: #f59e0b;
   --danger: #ef4444;
   --success: #22c55e;
@@ -17,8 +17,9 @@
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 8px;
-  --shadow-soft: 0 20px 45px rgba(8, 6, 18, 0.45);
-  --shadow-inset: inset 0 0 0 1px rgba(126, 91, 255, 0.08);
+  --shadow-soft: 0 20px 45px rgba(5, 9, 15, 0.55);
+  --shadow-inset: inset 0 0 0 1px rgba(47, 155, 255, 0.08);
+  --glow-soft: 0 0 30px rgba(47, 155, 255, 0.15);
 }
 
 * {
@@ -28,7 +29,7 @@
 body {
   margin: 0;
   font-family: var(--font-ui);
-  background: radial-gradient(circle at top right, #251b40 0%, #130f1d 40%, #0f0b16 70%);
+  background: radial-gradient(circle at top right, #192c4c 0%, #0e1825 40%, #0a0f15 70%);
   color: var(--text);
 }
 
@@ -42,5 +43,5 @@ button {
 }
 
 ::selection {
-  background: rgba(126, 91, 255, 0.35);
+  background: rgba(47, 155, 255, 0.35);
 }

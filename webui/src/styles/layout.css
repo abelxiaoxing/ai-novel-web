@@ -88,9 +88,9 @@
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), #5d3bff);
+  background: linear-gradient(135deg, var(--accent), #2f6bff);
   color: #f2edff;
-  box-shadow: 0 8px 20px rgba(126, 91, 255, 0.25);
+  box-shadow: 0 8px 20px rgba(47, 155, 255, 0.25);
 }
 
 .btn-primary:hover {
@@ -98,8 +98,8 @@
 }
 
 .btn-ghost {
-  background: rgba(126, 91, 255, 0.08);
-  border: 1px solid rgba(126, 91, 255, 0.25);
+  background: rgba(47, 155, 255, 0.08);
+  border: 1px solid rgba(47, 155, 255, 0.25);
   color: var(--text);
 }
 
@@ -116,7 +116,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  background: rgba(126, 91, 255, 0.16);
+  background: rgba(47, 155, 255, 0.16);
   color: var(--accent-bright);
 }
 
@@ -136,7 +136,7 @@
 .select-field:focus,
 .textarea-field:focus {
   outline: none;
-  border-color: rgba(126, 91, 255, 0.6);
+  border-color: rgba(47, 155, 255, 0.6);
 }
 
 .section {
@@ -193,7 +193,7 @@ button.panel-expand-btn span {
 
 button.panel-collapse-btn:hover,
 button.panel-expand-btn:hover {
-  background: rgba(126, 91, 255, 0.1);
+  background: rgba(47, 155, 255, 0.1);
   color: var(--accent-bright);
 }
 
