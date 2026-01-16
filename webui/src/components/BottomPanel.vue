@@ -1,5 +1,11 @@
 <template>
-  <section class="bottom-panel panel">
+  <section class="bottom-panel panel" :class="{ 'bottom-panel--collapsed': !bottomPanelVisible }">
+    <button v-if="bottomPanelVisible" class="panel-collapse-btn panel-collapse-btn--top" type="button" @click="$emit('toggle')" title="收缩">
+      <span>▼</span>
+    </button>
+    <button v-else class="panel-expand-btn panel-expand-btn--bottom" type="button" @click="$emit('toggle')" title="展开任务日志">
+      <span>▲</span>
+    </button>
     <div class="panel-header">
       <div class="panel-title">任务日志</div>
       <div class="task-meta">
@@ -8,6 +14,7 @@
         <span v-if="elapsedLabel" class="muted">· {{ elapsedLabel }}</span>
       </div>
     </div>
+    <div v-show="bottomPanelVisible" class="bottom-panel-body">
     <div class="log-body">
       <div v-if="activeOutputs.length" class="output-strip">
         <span class="output-label">输出文件</span>
@@ -40,6 +47,7 @@
         <span class="task-status" :class="task.status">{{ statusLabel(task.status) }}</span>
       </button>
     </div>
+    </div>
   </section>
 </template>
 
@@ -51,9 +59,10 @@ const props = defineProps<{
   tasks: TaskItem[];
   activeTask: TaskItem | null;
   activeTaskId: string | null;
+  bottomPanelVisible?: boolean;
 }>();
 
-defineEmits(["select", "open-file"]);
+defineEmits(["select", "open-file", "toggle"]);
 
 const statusLabel = (status: string) => {
   const map: Record<string, string> = {
@@ -155,7 +164,44 @@ onBeforeUnmount(() => {
   grid-row: 3 / 4;
   display: flex;
   flex-direction: column;
+  overflow: visible;
+  position: relative;
+}
+
+.bottom-panel--collapsed {
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+}
+
+.bottom-panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+.panel-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel-toggle:hover {
+  background: rgba(126, 91, 255, 0.1);
+  color: var(--accent-bright);
+}
+
+.panel-toggle-icon {
+  font-size: 12px;
 }
 
 .log-body {

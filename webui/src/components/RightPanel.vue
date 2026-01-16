@@ -1,11 +1,18 @@
 <template>
-  <aside class="right-panel panel">
+  <aside class="right-panel panel" :class="{ 'right-panel--collapsed': !rightPanelVisible }">
+    <button v-if="rightPanelVisible" class="panel-collapse-btn panel-collapse-btn--left" type="button" @click="$emit('toggle')" title="收缩">
+      <span>▶</span>
+    </button>
+    <button v-else class="panel-expand-btn panel-expand-btn--right" type="button" @click="$emit('toggle')" title="展开生成控制">
+      <span>◀</span>
+    </button>
     <div class="panel-header">
       <div class="panel-title">生成控制</div>
       <span v-if="form.genre" class="genre-badge">{{ form.genre }}</span>
       <span class="muted">第 {{ workflowStore.currentChapter }}/{{ workflowStore.totalChapters }} 章</span>
     </div>
-    <StepIndicator
+    <div v-show="rightPanelVisible" class="right-panel-body">
+      <StepIndicator
       :current-step="currentStepForIndicator"
       :completed-steps="workflowStore.completedSteps"
       @step-click="handleStepClick"
@@ -158,6 +165,7 @@
         </div>
       </div>
     </div>
+    </div>
   </aside>
 </template>
 
@@ -185,6 +193,7 @@ export type WorkbenchForm = {
 
 const props = defineProps<{
   form: WorkbenchForm;
+  rightPanelVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -193,6 +202,7 @@ const emit = defineEmits<{
   (event: "next-chapter"): void;
   (event: "import-knowledge", file: File): void;
   (event: "clear-vectorstore"): void;
+  (event: "toggle"): void;
 }>();
 
 const workflowStore = useWorkflowStore();
@@ -253,7 +263,45 @@ const handleFile = (event: Event) => {
   grid-row: 2 / 4;
   display: flex;
   flex-direction: column;
+  overflow: visible;
+  position: relative;
+}
+
+.right-panel--collapsed {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+}
+
+.right-panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
+}
+
+.panel-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+}
+
+.panel-toggle:hover {
+  background: rgba(126, 91, 255, 0.1);
+  color: var(--accent-bright);
+}
+
+.panel-toggle-icon {
+  font-size: 12px;
 }
 
 .genre-badge {

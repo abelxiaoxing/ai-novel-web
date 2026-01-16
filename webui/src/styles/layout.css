@@ -5,8 +5,48 @@
   gap: 12px;
   padding: 16px;
   height: 100vh;
+  transition: grid-template-columns 0.3s ease, grid-template-rows 0.3s ease;
 }
 
+/* 隐藏左侧边栏 */
+.app-grid.no-sidebar {
+  grid-template-columns: 0 minmax(0, 1fr) 320px;
+}
+
+/* 隐藏右侧边栏 */
+.app-grid.no-right-panel {
+  grid-template-columns: 120px minmax(0, 1fr) 0;
+}
+
+/* 隐藏底部面板 */
+.app-grid.no-bottom-panel {
+  grid-template-rows: 56px minmax(0, 1fr) 0;
+}
+
+/* 同时隐藏左右侧边栏 */
+.app-grid.no-sidebar.no-right-panel {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+
+/* 同时隐藏左侧边栏和底部面板 */
+.app-grid.no-sidebar.no-bottom-panel {
+  grid-template-columns: 0 minmax(0, 1fr) 320px;
+  grid-template-rows: 56px minmax(0, 1fr) 0;
+}
+
+/* 同时隐藏右侧边栏和底部面板 */
+.app-grid.no-right-panel.no-bottom-panel {
+  grid-template-columns: 120px minmax(0, 1fr) 0;
+  grid-template-rows: 56px minmax(0, 1fr) 0;
+}
+
+/* 隐藏所有侧边和底部面板 */
+.app-grid.no-sidebar.no-right-panel.no-bottom-panel {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+  grid-template-rows: 56px minmax(0, 1fr) 0;
+}
+
+/* 面板收缩时的样式 - 由组件内部处理 */
 .app-grid.with-progress {
   padding-top: 50px;
 }
@@ -116,6 +156,81 @@
 
 .muted {
   color: var(--text-muted);
+}
+
+/* 面板切换按钮（收缩/展开）的统一样式 */
+button.panel-collapse-btn,
+button.panel-expand-btn {
+  position: absolute;
+  z-index: 10;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+button.panel-collapse-btn *,
+button.panel-expand-btn * {
+  box-sizing: border-box;
+}
+
+button.panel-collapse-btn span,
+button.panel-expand-btn span {
+  font-size: 10px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+button.panel-collapse-btn:hover,
+button.panel-expand-btn:hover {
+  background: rgba(126, 91, 255, 0.1);
+  color: var(--accent-bright);
+}
+
+/* 右侧边缘的按钮 */
+button.panel-collapse-btn--right,
+button.panel-expand-btn--left {
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 48px;
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+}
+
+/* 左侧边缘的按钮 */
+button.panel-collapse-btn--left,
+button.panel-expand-btn--right {
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 48px;
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+}
+
+/* 顶部边缘的按钮 */
+button.panel-collapse-btn--top,
+button.panel-expand-btn--bottom {
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 16px;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
 }
 
 @media (max-width: 1200px) {

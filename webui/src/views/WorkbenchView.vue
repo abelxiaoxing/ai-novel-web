@@ -8,7 +8,7 @@
       :cancel-disabled="batchCancelRequested"
       @cancel="cancelBatch"
     />
-    <div class="app-grid" :class="{ 'with-progress': batchRunning }">
+    <div class="app-grid" :class="[batchRunning ? 'with-progress' : '', panelStore.gridClass].filter(Boolean).join(' ')">
       <TopBar
         :project-name="projectStore.currentProject?.name"
         :genre="projectStore.currentProject?.genre"
@@ -24,9 +24,11 @@
         class="sidebar"
         :nodes="projectStore.fileTree"
         :active-path="projectStore.activeFile?.path"
+        :sidebar-visible="panelStore.sidebar"
         @open="projectStore.openFile"
         @rename="handleFileRename"
         @delete="handleFileDelete"
+        @toggle="panelStore.toggle('sidebar')"
       />
 
       <EditorPane
@@ -39,19 +41,23 @@
 
       <RightPanel
         :form="form"
+        :right-panel-visible="panelStore.rightPanel"
         @update:form="handleFormUpdate"
         @run="runAction"
         @next-chapter="handleNextChapter"
         @import-knowledge="handleKnowledgeImport"
         @clear-vectorstore="handleVectorStoreClear"
+        @toggle="panelStore.toggle('rightPanel')"
       />
 
       <BottomPanel
         :tasks="taskStore.tasks"
         :active-task="taskStore.activeTask"
         :active-task-id="taskStore.activeTaskId"
+        :bottom-panel-visible="panelStore.bottomPanel"
         @select="taskStore.activeTaskId = $event"
         @open-file="openOutputFile"
+        @toggle="panelStore.toggle('bottomPanel')"
       />
     </div>
 
@@ -83,6 +89,7 @@ import { useProjectStore, type ActiveFile, type FileNode } from "@/stores/projec
 import { useTaskStore } from "@/stores/task";
 import { useToastStore } from "@/stores/toast";
 import { useWorkflowStore } from "@/stores/workflow";
+import { usePanelStore } from "@/stores/panel";
 import { useChapterInfo } from "@/composables/useChapterInfo";
 import {
   buildPrompt,
@@ -104,6 +111,7 @@ const taskStore = useTaskStore();
 const configStore = useConfigStore();
 const toastStore = useToastStore();
 const workflowStore = useWorkflowStore();
+const panelStore = usePanelStore();
 
 const promptModalOpen = ref(false);
 const promptText = ref("");
