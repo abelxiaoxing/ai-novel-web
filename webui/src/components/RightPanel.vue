@@ -8,7 +8,6 @@
     </button>
     <div class="panel-header">
       <div class="panel-title">生成控制</div>
-      <span v-if="form.genre" class="genre-badge">{{ form.genre }}</span>
       <span class="muted">第 {{ workflowStore.currentChapter }}/{{ workflowStore.totalChapters }} 章</span>
     </div>
     <div v-show="rightPanelVisible" class="right-panel-body">
@@ -301,15 +300,6 @@ const handleFile = (event: Event) => {
 
 .panel-toggle-icon {
   font-size: 12px;
-}
-
-.genre-badge {
-  background: rgba(126, 91, 255, 0.15);
-  color: var(--accent-bright);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
 }
 
 /* 步骤区块 */

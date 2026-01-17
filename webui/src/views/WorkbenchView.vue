@@ -1325,6 +1325,7 @@ watch(
               form.chapterNumber = String(workflowStore.currentChapter);
               clearChapterFields();
             }
+            await syncWorkflowFromProject({ checkVectorstore: true });
             queueSaveState();
           }
           const stepToastMap: Record<string, string> = {
