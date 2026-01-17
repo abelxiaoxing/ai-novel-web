@@ -133,7 +133,7 @@ class ConfigTestRequest(BaseModel):
     prompt: Optional[str] = None
 
 
-app = FastAPI(title="AI Novel Generator API")
+app = FastAPI(title="AI Novel Web API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -545,7 +545,7 @@ def get_llm_configs() -> Dict[str, Any]:
 
 @app.post("/api/config/llm")
 def create_llm_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    config = config_store.load()
+    config = config_store.load_raw()
     name = payload.get("name")
     if not name:
         raise HTTPException(status_code=400, detail="Config name is required.")
@@ -560,7 +560,7 @@ def create_llm_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 @app.put("/api/config/llm/{name}")
 def update_llm_config(name: str, payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    config = config_store.load()
+    config = config_store.load_raw()
     config.setdefault("llm_configs", {})[name] = payload
     config_store.save(config)
     return {"ok": True}
@@ -568,7 +568,7 @@ def update_llm_config(name: str, payload: Dict[str, Any] = Body(...)) -> Dict[st
 
 @app.delete("/api/config/llm/{name}")
 def delete_llm_config(name: str) -> Dict[str, Any]:
-    config = config_store.load()
+    config = config_store.load_raw()
     configs = config.setdefault("llm_configs", {})
     if name in configs:
         del configs[name]
@@ -611,7 +611,7 @@ def get_embedding_configs() -> Dict[str, Any]:
 
 @app.post("/api/config/embedding")
 def create_embedding_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    config = config_store.load()
+    config = config_store.load_raw()
     name = payload.get("name")
     if not name:
         raise HTTPException(status_code=400, detail="Config name is required.")
@@ -626,7 +626,7 @@ def create_embedding_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, An
 
 @app.put("/api/config/embedding/{name}")
 def update_embedding_config(name: str, payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    config = config_store.load()
+    config = config_store.load_raw()
     config.setdefault("embedding_configs", {})[name] = payload
     config_store.save(config)
     return {"ok": True}
@@ -634,7 +634,7 @@ def update_embedding_config(name: str, payload: Dict[str, Any] = Body(...)) -> D
 
 @app.delete("/api/config/embedding/{name}")
 def delete_embedding_config(name: str) -> Dict[str, Any]:
-    config = config_store.load()
+    config = config_store.load_raw()
     configs = config.setdefault("embedding_configs", {})
     if name in configs:
         del configs[name]
@@ -673,7 +673,7 @@ def get_choose_configs() -> Dict[str, Any]:
 
 @app.put("/api/config/choose")
 def update_choose_configs(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    config = config_store.load()
+    config = config_store.load_raw()
     if "choose_configs" in payload:
         config["choose_configs"] = payload["choose_configs"]
     else:
@@ -684,12 +684,12 @@ def update_choose_configs(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]
 
 @app.get("/api/config/proxy")
 def get_proxy_config() -> Dict[str, Any]:
-    return config_store.load().get("proxy_setting", {})
+    return config_store.load_raw().get("proxy_setting", {})
 
 
 @app.put("/api/config/proxy")
 def update_proxy_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    config = config_store.load()
+    config = config_store.load_raw()
     config["proxy_setting"] = payload
     config_store.save(config)
     return {"ok": True}
@@ -697,12 +697,12 @@ def update_proxy_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 @app.get("/api/config/webdav")
 def get_webdav_config() -> Dict[str, Any]:
-    return config_store.load().get("webdav_config", {})
+    return config_store.load_raw().get("webdav_config", {})
 
 
 @app.put("/api/config/webdav")
 def update_webdav_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    config = config_store.load()
+    config = config_store.load_raw()
     config["webdav_config"] = payload
     config_store.save(config)
     return {"ok": True}

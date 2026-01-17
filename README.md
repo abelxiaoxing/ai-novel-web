@@ -1,6 +1,5 @@
 # 📖 自动小说生成工具
 
->- 当前没有什么精力维护该项目，本身该项目并无任何收益，以及临近毕业，有很多内容要忙，如果后面有时间的话，再考虑基于更新的技术去重构吧。——2025/9/24
 
 <div align="center">
   
@@ -47,17 +46,15 @@
 1. **下载项目**  
    - 通过 [GitHub](https://github.com) 下载项目 ZIP 文件，或使用以下命令克隆本项目：
      ```bash
-     git clone https://github.com/YILING0013/AI_NovelGenerator
+     git clone https://github.com/abelxiaoxing/ai-novel-web
      ```
 
-2. **安装编译工具（可选）**  
-   - 如果对某些包无法正常安装，访问 [Visual Studio Build Tools](https://visualstudio.microsoft.com/zh-hans/visual-cpp-build-tools/) 下载并安装C++编译工具，用于构建部分模块包；
-   - 安装时，默认只包含 MSBuild 工具，需手动勾选左上角列表栏中的 **C++ 桌面开发** 选项。
+2. **安装编译工具（略）**  
 
 3. **安装依赖并运行**  
    - 打开终端，进入项目源文件目录：
      ```bash
-     cd AI_NovelGenerator
+     cd ai-novel-web
      ```
    - 安装项目依赖：
      ```bash
@@ -88,7 +85,7 @@
 
 ## 🗂 项目架构
 ```
-novel-generator/
+ai-novel-web/
 ├── backend/                     # FastAPI 服务
 ├── consistency_checker.py       # 一致性检查, 防止剧情冲突
 |—— chapter_directory_parser.py  # 目录解析
@@ -97,7 +94,7 @@ novel-generator/
 ├── prompt_definitions.py        # 定义 AI 提示词
 ├── utils.py                     # 常用工具函数, 文件操作
 ├── config_manager.py            # 管理配置 (API Key, Base URL)
-├── config.json                  # 用户配置文件 (可选)
+├── config.example.json          # 配置模板（不含密钥）
 ├── novel_generator/             # 章节生成核心逻辑
 ├── webui/                       # Web 前端
 └── vectorstore/                 # (可选) 本地向量数据库存储
@@ -106,48 +103,50 @@ novel-generator/
 ---
 
 ## ⚙️ 配置指南
-### 📌 基础配置（config.json）
+### 📌 配置位置（分层加载）
+1. **模板**：仓库内 `config.example.json`
+2. **本地配置**：默认 `~/.config/.ai_novel_web/config.json`
+3. **环境变量覆盖**：运行时合并，不写回配置文件
+
+> 可用 `AINOVEL_CONFIG_FILE` 指定本地配置路径。
+
+### 🔧 配置结构（示意）
 ```json
 {
-    "api_key": "sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-    "base_url": "https://api.openai.com/v1",
-    "interface_format": "OpenAI",
-    "model_name": "gpt-4o-mini",
-    "temperature": 0.7,
-    "max_tokens": 4096,
-    "embedding_api_key": "sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-    "embedding_interface_format": "OpenAI",
-    "embedding_url": "https://api.openai.com/v1",
-    "embedding_model_name": "text-embedding-ada-002",
-    "embedding_retrieval_k": 4,
-    "topic": "星穹铁道主角星穿越到原神提瓦特大陆，拯救提瓦特大陆，并与其中的角色展开爱恨情仇的小说",
-    "genre": "玄幻",
-    "num_chapters": 120,
-    "word_number": 4000,
-    "filepath": "D:/AI_NovelGenerator/filepath"
+  "llm_configs": {
+    "my_llm": {
+      "api_key": "",
+      "base_url": "https://api.openai.com/v1",
+      "model_name": "gpt-4o-mini",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "timeout": 900,
+      "interface_format": "OpenAI"
+    }
+  },
+  "embedding_configs": {
+    "my_embedding": {
+      "api_key": "",
+      "base_url": "https://api.openai.com/v1",
+      "model_name": "text-embedding-3-small",
+      "retrieval_k": 4,
+      "interface_format": "OpenAI"
+    }
+  },
+  "choose_configs": {
+    "architecture_llm": "my_llm",
+    "chapter_outline_llm": "my_llm",
+    "prompt_draft_llm": "my_llm",
+    "finalize_llm": "my_llm",
+    "consistency_llm": "my_llm"
+  }
 }
 ```
 
-### 🔧 配置说明
-1. **生成模型配置**
-   - `api_key`: 大模型服务的API密钥
-   - `base_url`: API终端地址（本地服务填Ollama等地址）
-   - `interface_format`: 接口模式
-   - `model_name`: 主生成模型名称（如gpt-4, claude-3等）
-   - `temperature`: 创意度参数（0-1，越高越有创造性）
-   - `max_tokens`: 模型最大回复长度
-
-2. **Embedding模型配置**
-   - `embedding_model_name`: 模型名称（如Ollama的nomic-embed-text）
-   - `embedding_url`: 服务地址
-   - `embedding_retrieval_k`: 
-
-3. **小说参数配置**
-   - `topic`: 核心故事主题
-   - `genre`: 作品类型
-   - `num_chapters`: 总章节数
-   - `word_number`: 单章目标字数
-   - `filepath`: 生成文件存储路径
+### 🔐 环境变量覆盖（常用）
+- `AINOVEL_LLM_API_KEY`：填充所有 LLM 配置的 `api_key`（仅在为空时）
+- `AINOVEL_EMBEDDING_API_KEY`：填充所有 Embedding 配置的 `api_key`（仅在为空时）
+- `AINOVEL_CONFIG_OVERRIDES`：JSON 字符串，深度合并到配置中
 
 ---
 
@@ -223,20 +222,3 @@ scripts/dev.sh
 > 3. 切换不同Embedding模型后建议清空vectorstore目录
 > 4. 云端Embedding需确保对应API权限已开通
 
----
-
-## ❓ 疑难解答
-### Q1: Expecting value: line 1 column 1 (char 0)
-
-该问题大概率由于API未正确响应造成，也许响应了一个html？其它内容，导致出现该报错；
-
-
-### Q2: HTTP/1.1 504 Gateway Timeout？
-确认接口是否稳定；
-
-### Q3: 如何切换不同的Embedding提供商？
-在 Web 工作台中对应输入即可。
-
----
-
-如有更多问题或需求，欢迎在**项目 Issues** 中提出。

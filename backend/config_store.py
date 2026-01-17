@@ -8,28 +8,38 @@ from config_manager import load_config, save_config
 
 class ConfigStore:
     def __init__(self, config_path: Optional[str] = None) -> None:
-        default_path = os.environ.get("AINOVEL_CONFIG_FILE", "config.json")
-        self._config_path = config_path or default_path
+        if config_path:
+            self._config_path = config_path
+        else:
+            default_path = os.environ.get("AINOVEL_CONFIG_FILE")
+            if default_path:
+                self._config_path = default_path
+            else:
+                base_dir = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+                self._config_path = os.path.join(base_dir, ".ai_novel_web", "config.json")
 
-    def load(self) -> Dict[str, Any]:
-        return load_config(self._config_path)
+    def load(self, *, apply_env: bool = True) -> Dict[str, Any]:
+        return load_config(self._config_path, apply_env=apply_env)
+
+    def load_raw(self) -> Dict[str, Any]:
+        return self.load(apply_env=False)
 
     def save(self, config: Dict[str, Any]) -> None:
         save_config(config, self._config_path)
 
-    def get_llm_configs(self) -> Dict[str, Any]:
-        configs = self.load().get("llm_configs", {})
+    def get_llm_configs(self, *, apply_env: bool = False) -> Dict[str, Any]:
+        configs = self.load(apply_env=apply_env).get("llm_configs", {})
         return self._normalize_configs(configs)
 
-    def get_embedding_configs(self) -> Dict[str, Any]:
-        configs = self.load().get("embedding_configs", {})
+    def get_embedding_configs(self, *, apply_env: bool = False) -> Dict[str, Any]:
+        configs = self.load(apply_env=apply_env).get("embedding_configs", {})
         return self._normalize_configs(configs)
 
-    def get_choose_configs(self) -> Dict[str, str]:
-        return self.load().get("choose_configs", {})
+    def get_choose_configs(self, *, apply_env: bool = False) -> Dict[str, str]:
+        return self.load(apply_env=apply_env).get("choose_configs", {})
 
     def resolve_llm_config(self, purpose: str, name_override: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
-        config = self.load()
+        config = self.load(apply_env=True)
         llm_configs = config.get("llm_configs", {})
         if not llm_configs:
             raise ValueError("No LLM configs available.")
@@ -42,7 +52,7 @@ class ConfigStore:
         return name, self._normalize_entry(llm_configs[name])
 
     def resolve_embedding_config(self, name_override: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
-        config = self.load()
+        config = self.load(apply_env=True)
         embedding_configs = config.get("embedding_configs", {})
         if not embedding_configs:
             raise ValueError("No embedding configs available.")
@@ -64,7 +74,16 @@ class ConfigStore:
             "batch": "prompt_draft_llm",
         }
         key = mapping.get(purpose)
-        return choose_configs.get(key) if key else None
+        if not key:
+            return None
+        value = choose_configs.get(key)
+        if value:
+            return value
+        if key == "final_chapter_llm":
+            return choose_configs.get("finalize_llm")
+        if key == "consistency_review_llm":
+            return choose_configs.get("consistency_llm")
+        return None
 
     @staticmethod
     def _normalize_entry(entry: Any) -> Any:

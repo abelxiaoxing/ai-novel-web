@@ -1,4 +1,4 @@
-# AI_NovelGenerator 核心逻辑架构文档
+# ai-novel-web 核心逻辑架构文档
 
 ## 0. 范围与目标
 - 目标：记录当前已重构完成的后端核心层架构，为后续开发和维护提供参考。
@@ -56,7 +56,7 @@
 | `plot_arcs` | `plot_arcs.txt` | 用户手动维护 | `check_consistency` | 剧情要点/未解决冲突（可选） |
 | - | `vectorstore/` | `update_vector_store`, `import_knowledge_file` | `get_relevant_context_from_vector_store` | Chroma 向量库 |
 
-项目元数据存储位置：`~/.config/.ai_novel_generator/projects/projects.json`
+项目元数据存储位置：`~/.config/.ai_novel_web/projects/projects.json`
 
 ### 1.3 核心流程（实际实现）
 
@@ -153,7 +153,7 @@
 
 ### 2.2 实际包结构
 ```
-AI_NovelGenerator/
+ai-novel-web/
 ├── webui/                      # 前端 Web UI
 │   ├── src/
 │   │   ├── api/               # API 客户端

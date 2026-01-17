@@ -15,7 +15,7 @@ def _utc_now() -> str:
 
 class ProjectStore:
     def __init__(self, data_root: Optional[str] = None) -> None:
-        default_root = os.path.expanduser("~/.config/.ai_novel_generator/projects")
+        default_root = os.path.expanduser("~/.config/.ai_novel_web/projects")
         self._data_root = data_root or os.environ.get("AINOVEL_DATA_ROOT", default_root)
         os.makedirs(self._data_root, exist_ok=True)
         self._metadata_file = os.path.join(self._data_root, "projects.json")

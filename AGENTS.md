@@ -1,4 +1,6 @@
-# AI 二次开发指南（基于当前代码实况）
+# ai-novel-web 开发指南
+## 开发要求
+注释和说明文档始终使用中文
 
 ## 一句话概览
 本项目是“项目制小说生成器”：前端管理项目与章节，后端以任务方式驱动生成流程，核心引擎在 `novel_generator/` 里完成架构、蓝图、章节、向量检索与定稿。
@@ -10,8 +12,8 @@
 - 核心引擎：`novel_generator/`（提示词驱动 + 向量检索 + 定稿）。
 
 ### 数据落地位置
-- **项目数据根目录**：`~/.config/.ai_novel_generator/projects`（可用 `AINOVEL_DATA_ROOT` 覆盖）。
-- **项目元数据**：`~/.config/.ai_novel_generator/projects/projects.json`（由 `ProjectStore` 管理）。
+- **项目数据根目录**：`~/.config/.ai_novel_web/projects`（可用 `AINOVEL_DATA_ROOT` 覆盖）。
+- **项目元数据**：`~/.config/.ai_novel_web/projects/projects.json`（由 `ProjectStore` 管理）。
 - **单项目结构（project_root 下）**：
   - `Novel_architecture.txt`（架构）
   - `Novel_directory.txt`（蓝图）
@@ -37,42 +39,61 @@
 - 特点：支持分块生成 + 断点续跑（基于已有 `Novel_directory.txt`）。
 - 蓝图格式由 `chapter_directory_parser.py` 解析（要求“第X章 - 标题 + 若干字段”）。
 
-### 3) 章节草稿（实际会自动定稿）
+### 3) 章节提示词构建
+- API：`/api/projects/{id}/generate/build-prompt`
+- 入口：`backend/services.build_prompt`
+- 引擎：`novel_generator/chapter.py::build_chapter_prompt`
+- 特点：仅返回 `prompt_text`，不落盘；支持 `retrieval_k` 检索参数。
+
+### 4) 章节草稿（仅草稿）
 - API：`/api/projects/{id}/generate/draft`
 - 入口：`backend/services.generate_draft`
 - 引擎：`novel_generator/chapter.py::generate_chapter_draft`
-- **注意**：生成草稿后会自动调用 `finalize_chapter` 更新摘要与角色状态，并写入向量库。
+- 特点：写入 `chapters/chapter_{N}.txt`，不更新摘要/角色状态/向量库；可传 `custom_prompt_text` 绕过提示词构建。
 
-### 4) 单独定稿
+### 5) 扩写/润色
+- API：`/api/projects/{id}/generate/enrich`
+- 入口：`backend/services.enrich`
+- 引擎：`novel_generator/finalization.py::enrich_chapter_text`
+- 特点：仅返回扩写后的 `chapter_text`，不落盘。
+
+### 6) 单独定稿
 - API：`/api/projects/{id}/generate/finalize`
-- 用途：手动修改章节后刷新 `global_summary.txt`、`character_state.txt` 并更新向量库。
+- 入口：`backend/services.finalize`
+- 引擎：`novel_generator/finalization.py::finalize_chapter`
+- 用途：更新 `global_summary.txt`、`character_state.txt` 并写入向量库。
 
-### 5) 批量生成
+### 7) 批量生成
 - API：`/api/projects/{id}/generate/batch`
 - 入口：`backend/services.batch_generate`
-- 特点：支持续写已有章节、自动扩写、批量定稿、可取消。
+- 特点：支持续写已有章节、可选 `auto_enrich + min_word`，仅在生成/扩写后自动定稿，可取消。
 
-### 6) 一致性检查
+### 8) 一致性检查
 - API：`/api/projects/{id}/consistency-check`
 - 引擎：`consistency_checker.py::check_consistency`
 - 额外参考：`plot_arcs.txt`（需手工补充）。
 
-### 7) 知识库
+### 9) 知识库与向量库
 - 导入：`/api/projects/{id}/knowledge/import`
 - 清空：`/api/projects/{id}/vectorstore/clear`
+- 摘要：`/api/projects/{id}/vectorstore`（按来源分组统计）
+- 删除章节向量：`/api/projects/{id}/vectorstore/chapters/{chapter_number}`
 - 底层：`novel_generator/vectorstore_utils.py`（Chroma + embeddings）
 
 ## 任务系统（与 UI 联动）
 - 所有生成入口都是异步任务：`backend/task_runtime.py::TaskManager`（线程）。
 - 任务状态：`/api/tasks/{task_id}`，日志流：`/api/tasks/{task_id}/stream`（SSE）。
+- 取消任务：`/api/tasks/{task_id}/cancel`（仅对未完成任务生效）。
 - 任务状态仅在内存中，服务重启会丢失。
 
 ## 配置与模型适配（真实可用项）
 ### 配置文件
-- 默认 `config.json`，可用 `AINOVEL_CONFIG_FILE` 指定。
-- 若不存在会自动创建默认模板（见 `config_manager.py`）。
+- 模板为仓库内 `config.example.json`。
+- 默认读取 `~/.config/.ai_novel_web/config.json`，可用 `AINOVEL_CONFIG_FILE` 指定。
+- 若不存在会自动创建本地配置（见 `config_manager.py`）。
 - 选择策略：`choose_configs` 根据用途映射到对应 LLM 配置：
   - `architecture_llm`、`chapter_outline_llm`、`prompt_draft_llm`、`final_chapter_llm`、`consistency_review_llm`。
+  - `build_prompt`/`draft`/`batch` → `prompt_draft_llm`，`finalize`/`enrich` → `final_chapter_llm`。
 
 ### LLM 适配（interface_format 支持）
 - `OpenAI`、`DeepSeek`、`Azure OpenAI`、`Azure AI`、`Ollama`、`ML Studio`、`Gemini`、
@@ -86,7 +107,7 @@
 - 页面路由：`/`（项目选择）、`/projects/:id`（工作台）、`/settings`（配置）。
 - 工作台流程由 `webui/src/stores/workflow.ts` 管理：
   - 约束：第 N 章生成需第 N-1 章已定稿。
-  - 章节状态：`not-started` / `draft-pending` / `finalized`。
+  - 章节状态：`not-started` / `draft-pending` / `finalized`，编辑或向量库删除会标记需重新定稿。
 - API 封装：`webui/src/api/*`，与后端路径保持一致。
 - **注意**：前端存在 `generate/draft/stream` URL 生成，但后端并未实现该接口（仅有任务日志流）。
 
@@ -122,7 +143,7 @@
   3) 修改章节 → 手动定稿 → 摘要与角色状态是否更新  
 
 ## 常见“过时/容易误解点”
-- 草稿生成接口已自动定稿，不等同于“仅草稿”。
+- 草稿生成接口**不会**自动定稿，定稿需调用 `/generate/finalize` 或批量生成自动处理。
 - 前端存在草稿流式生成 URL，但后端未实现对应接口。
 - 向量库路径在项目根目录下，不在仓库内。
 
