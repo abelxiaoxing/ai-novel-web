@@ -52,7 +52,7 @@
           <textarea class="textarea-field" rows="2" :value="form.userGuidance" @input="update('userGuidance', $event)" placeholder="例：主角性格要沉稳，不要后宫"></textarea>
         </label>
         <div class="action-row">
-          <button class="btn btn-primary" :class="{ 'btn-highlight': workflowStore.nextStep === 'architecture' }" @click="$emit('run', 'architecture')">生成架构</button>
+          <button class="btn btn-outline" @click="$emit('run', 'architecture')">生成架构</button>
         </div>
       </div>
     </div>
@@ -77,7 +77,7 @@
           <textarea class="textarea-field" rows="2" :value="form.userGuidance" @input="update('userGuidance', $event)" placeholder="对章节安排的额外要求"></textarea>
         </label>
         <div class="action-row">
-          <button class="btn btn-primary" :class="{ 'btn-highlight': workflowStore.nextStep === 'blueprint' }" :disabled="buttonStates.blueprintDisabled" @click="$emit('run', 'blueprint')">生成章节蓝图</button>
+          <button class="btn btn-outline" :disabled="buttonStates.blueprintDisabled" @click="$emit('run', 'blueprint')">生成章节蓝图</button>
         </div>
       </div>
     </div>
@@ -116,14 +116,13 @@
         <!-- 主要操作按钮 -->
         <div class="action-row action-row--primary">
           <button
-            class="btn btn-primary"
-            :class="{ 'btn-highlight': workflowStore.nextStep === 'draft' }"
+            class="btn btn-outline"
             :disabled="buttonStates.draftDisabled"
             :title="buttonStates.draftDisabledReason || ''"
             @click="$emit('run', 'draft')"
           >生成草稿</button>
           <button
-            class="btn btn-primary"
+            class="btn btn-outline"
             :disabled="buttonStates.finalizeDisabled"
             :title="buttonStates.finalizeDisabledReason || ''"
             @click="$emit('run', 'finalize')"
@@ -590,18 +589,4 @@ const handleFile = (event: Event) => {
   display: none;
 }
 
-/* 高亮按钮样式 */
-.btn-highlight {
-  animation: btn-pulse 2s ease-in-out infinite;
-  box-shadow: 0 0 12px rgba(126, 91, 255, 0.5);
-}
-
-@keyframes btn-pulse {
-  0%, 100% {
-    box-shadow: 0 0 12px rgba(126, 91, 255, 0.5);
-  }
-  50% {
-    box-shadow: 0 0 20px rgba(126, 91, 255, 0.8);
-  }
-}
 </style>
