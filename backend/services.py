@@ -11,10 +11,15 @@ from novel_generator.blueprint import Chapter_blueprint_generate
 from novel_generator.chapter import build_chapter_prompt, generate_chapter_draft, generate_chapter_draft_stream
 from novel_generator.finalization import enrich_chapter_text, finalize_chapter
 from novel_generator.knowledge import import_knowledge_file
+from novel_generator.vectorstore_manager import (
+    delete_vectorstore_by_chapter,
+    get_vectorstore_summary as get_vs_summary,
+)
 from novel_generator.vectorstore_utils import clear_vector_store
 from utils import read_file, save_string_to_txt
 
 from backend.file_keys import resolve_chapter_path
+from embedding_adapters import create_embedding_adapter
 
 
 def generate_architecture(
@@ -137,35 +142,10 @@ def generate_draft(
         timeout=llm_config.get("timeout", 900),
         custom_prompt_text=payload.get("custom_prompt_text"),
     )
-    log("Draft completed, finalizing...")
-    # 自动定稿
-    finalize_chapter(
-        novel_number=payload["novel_number"],
-        word_number=payload["word_number"],
-        api_key=llm_config["api_key"],
-        base_url=llm_config["base_url"],
-        model_name=llm_config["model_name"],
-        temperature=llm_config.get("temperature", 0.7),
-        filepath=project_root,
-        embedding_api_key=embedding_config["api_key"],
-        embedding_url=embedding_config["base_url"],
-        embedding_interface_format=embedding_config["interface_format"],
-        embedding_model_name=embedding_config["model_name"],
-        interface_format=llm_config["interface_format"],
-        max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 900),
-    )
-    log(f"Chapter {payload['novel_number']} finalized.")
-    # 读取更新后的状态文件
-    summary = read_file(os.path.join(project_root, "global_summary.txt"))
-    character_state = read_file(os.path.join(project_root, "character_state.txt"))
+    log("Draft completed.")
     return {
-        "result": {
-            "chapter_text": chapter_text,
-            "global_summary": summary,
-            "character_state": character_state,
-        },
-        "output_files": [f"chapter:{payload['novel_number']}", "summary", "character_state"],
+        "result": {"chapter_text": chapter_text},
+        "output_files": [f"chapter:{payload['novel_number']}"],
     }
 
 
@@ -380,3 +360,40 @@ def save_upload_to_temp(upload_bytes: bytes, suffix: str = "") -> str:
     temp.flush()
     temp.close()
     return temp.name
+
+
+def get_vectorstore_summary(
+    project_root: str,
+    embedding_config: Dict[str, Any],
+    log,
+) -> Dict[str, Any]:
+    """获取向量库摘要，按来源分组统计"""
+    log("Getting vectorstore summary...")
+    embedding_adapter = create_embedding_adapter(
+        embedding_config["interface_format"],
+        embedding_config["api_key"],
+        embedding_config["base_url"],
+        embedding_config["model_name"],
+    )
+    summary = get_vs_summary(embedding_adapter, project_root)
+    log(f"Vectorstore summary: {summary['total_count']} total documents.")
+    return {"result": summary}
+
+
+def delete_vectorstore_chapter(
+    project_root: str,
+    chapter_number: int,
+    embedding_config: Dict[str, Any],
+    log,
+) -> Dict[str, Any]:
+    """删除指定章节的所有向量文档"""
+    log(f"Deleting chapter {chapter_number} from vectorstore...")
+    embedding_adapter = create_embedding_adapter(
+        embedding_config["interface_format"],
+        embedding_config["api_key"],
+        embedding_config["base_url"],
+        embedding_config["model_name"],
+    )
+    deleted_count = delete_vectorstore_by_chapter(embedding_adapter, project_root, chapter_number)
+    log(f"Deleted {deleted_count} documents for chapter {chapter_number}.")
+    return {"result": {"deleted_count": deleted_count}}

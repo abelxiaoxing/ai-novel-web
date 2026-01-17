@@ -18,10 +18,12 @@ from backend.services import (
     batch_generate,
     build_prompt,
     clear_vectorstore,
+    delete_vectorstore_chapter,
     enrich,
     generate_architecture,
     generate_blueprint,
     generate_draft,
+    get_vectorstore_summary,
     import_knowledge,
     run_consistency_check,
     save_upload_to_temp,
@@ -505,6 +507,33 @@ def api_clear_vectorstore(project_id: str) -> TaskResponse:
     task_id = task_manager.create_task(
         "vectorstore_clear",
         lambda log: clear_vectorstore(project_root, log),
+    )
+    return TaskResponse(task_id=task_id)
+
+
+@app.get("/api/projects/{project_id}/vectorstore")
+def api_get_vectorstore_summary(
+    project_id: str,
+    embedding_config_name: Optional[str] = None
+) -> Dict[str, Any]:
+    """获取向量库摘要，按来源分组统计"""
+    project_root = _get_project_root(project_id)
+    embedding_config = _resolve_embedding_config(embedding_config_name)
+    return get_vectorstore_summary(project_root, embedding_config, lambda msg: None)["result"]
+
+
+@app.delete("/api/projects/{project_id}/vectorstore/chapters/{chapter_number}", response_model=TaskResponse)
+def api_delete_vectorstore_chapter(
+    project_id: str,
+    chapter_number: int,
+    embedding_config_name: Optional[str] = None
+) -> TaskResponse:
+    """删除指定章节的所有向量文档"""
+    project_root = _get_project_root(project_id)
+    embedding_config = _resolve_embedding_config(embedding_config_name)
+    task_id = task_manager.create_task(
+        "vectorstore_delete_chapter",
+        lambda log: delete_vectorstore_chapter(project_root, chapter_number, embedding_config, log),
     )
     return TaskResponse(task_id=task_id)
 

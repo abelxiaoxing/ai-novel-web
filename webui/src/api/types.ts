@@ -88,3 +88,15 @@ export interface TaskStatusResponse {
   error?: string;
   output_files?: string[];
 }
+
+// 向量库相关类型
+export interface VectorstoreGroup {
+  type: "chapter" | "knowledge";
+  chapter?: number;
+  count: number;
+}
+
+export interface VectorstoreSummaryResponse {
+  total_count: number;
+  groups: VectorstoreGroup[];
+}

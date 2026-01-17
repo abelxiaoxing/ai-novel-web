@@ -19,6 +19,7 @@ export const WORKFLOW_STEPS: StepConfig[] = [
 export interface ChapterState {
   status: ChapterStatus;
   modifiedSinceFinalize?: boolean; // 编辑后标记需要重新定稿
+  deletedFromVectorstore?: boolean; // 向量库删除后标记需要重新定稿
 }
 
 export interface WorkflowState {
@@ -139,6 +140,9 @@ export const useWorkflowStore = defineStore("workflow", {
     getChapterStatusLabel(): { label: string; variant: string } {
       const state = this.getChapterStatus(this.currentChapter);
       if (state.status === "finalized") {
+        if (state.deletedFromVectorstore) {
+          return { label: "● 待重新定稿", variant: "warning" };
+        }
         return { label: "✓ 已定稿", variant: "success" };
       } else if (state.status === "draft-pending") {
         return { label: "● 草稿待定稿", variant: "warning" };
@@ -182,6 +186,23 @@ export const useWorkflowStore = defineStore("workflow", {
     },
 
     /**
+     * Check if a chapter needs re-finalization due to vectorstore deletion
+     */
+    needsReFinalization(): (chapter: number) => boolean {
+      return (chapter: number) => {
+        const state = this.chapterStatuses[chapter];
+        return state?.status === "finalized" && state?.deletedFromVectorstore === true;
+      };
+    },
+
+    /**
+     * Check if current chapter needs re-finalization
+     */
+    isCurrentChapterNeedsReFinalization(): boolean {
+      return this.needsReFinalization()(this.currentChapter);
+    },
+
+    /**
      * Get button disabled states
      */
     buttonStates(state): ReturnType<typeof computeButtonStates> {
@@ -219,7 +240,7 @@ export const useWorkflowStore = defineStore("workflow", {
     setChapterStatus(chapter: number, status: ChapterStatus): void {
       this.chapterStatuses = {
         ...this.chapterStatuses,
-        [chapter]: { status },
+        [chapter]: { status, deletedFromVectorstore: false },
       };
     },
 
@@ -269,6 +290,38 @@ export const useWorkflowStore = defineStore("workflow", {
       this.setChapterStatus(this.currentChapter, "finalized");
       // 移除 draft 步骤，因为 draft 是针对特定章节的
       this.completedSteps = this.completedSteps.filter((s) => s !== "draft");
+    },
+
+    /**
+     * Mark a chapter as deleted from vectorstore (needs re-finalization)
+     */
+    markChapterDeletedFromVectorstore(chapter: number): void {
+      const current = this.chapterStatuses[chapter];
+      if (current && current.status === "finalized") {
+        this.chapterStatuses = {
+          ...this.chapterStatuses,
+          [chapter]: { ...current, deletedFromVectorstore: true },
+        };
+      }
+    },
+
+    /**
+     * Mark all finalized chapters as deleted from vectorstore (needs re-finalization)
+     * Used when the entire vectorstore is cleared
+     */
+    markAllChaptersDeletedFromVectorstore(): void {
+      const updated: Record<number, ChapterState> = {};
+      for (const [chapter, state] of Object.entries(this.chapterStatuses)) {
+        if (state.status === "finalized") {
+          updated[Number(chapter)] = { ...state, deletedFromVectorstore: true };
+        }
+      }
+      if (Object.keys(updated).length > 0) {
+        this.chapterStatuses = {
+          ...this.chapterStatuses,
+          ...updated,
+        };
+      }
     },
 
     /**

@@ -112,6 +112,11 @@ describe("Workflow Store", () => {
     store.finalizeChapter();
     expect(store.getChapterStatusLabel.label).toBe("✓ 已定稿");
     expect(store.getChapterStatusLabel.variant).toBe("success");
+
+    // Finalized but vectorstore deleted
+    store.markChapterDeletedFromVectorstore(1);
+    expect(store.getChapterStatusLabel.label).toBe("● 待重新定稿");
+    expect(store.getChapterStatusLabel.variant).toBe("warning");
   });
 });
 

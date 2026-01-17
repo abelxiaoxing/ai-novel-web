@@ -26,11 +26,14 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { useAutoSave, type SaveStatus } from "@/composables/useAutoSave";
+import { useWorkflowStore } from "@/stores/workflow";
+import type { ActiveFile } from "@/stores/project";
 
 const props = defineProps<{
   title: string;
   subtitle?: string;
   content: string;
+  activeFile?: ActiveFile;
 }>();
 
 const emit = defineEmits<{
@@ -38,6 +41,7 @@ const emit = defineEmits<{
   (event: "save"): void;
 }>();
 
+const workflowStore = useWorkflowStore();
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const localContent = ref(props.content);
 
@@ -65,20 +69,60 @@ const autoSave = { saveStatus, saveNow, hasUnsavedChanges, resetWithContent };
 
 const charCount = computed(() => props.content.length);
 
+// 检查当前打开的是否是章节文件，以及需要重新定稿的状态
+const finalizeStatus = computed(() => {
+  if (props.activeFile?.kind === "chapter" && typeof props.activeFile.chapterNumber === "number") {
+    const chapter = props.activeFile.chapterNumber;
+    const state = workflowStore.getChapterStatus(chapter);
+
+    if (state.status === "finalized") {
+      if (state.deletedFromVectorstore) {
+        return "待重新定稿";
+      }
+      return "已定稿";
+    }
+    if (state.status === "draft-pending") {
+      if (state.modifiedSinceFinalize) {
+        return "待重新定稿";
+      }
+      return "草稿待定稿";
+    }
+  }
+  return null;
+});
+
 const saveStatusText = computed(() => {
+  // 优先显示定稿状态（如果是章节文件）
+  if (finalizeStatus.value) {
+    return finalizeStatus.value;
+  }
+
+  // 否则显示保存状态
   switch (saveStatus.value) {
     case "saving":
       return "保存中...";
     case "unsaved":
       return "未保存";
     case "saved":
-      return "已保存";
+      return "";
     default:
       return "";
   }
 });
 
 const saveStatusClass = computed(() => {
+  // 优先显示定稿状态（如果是章节文件）
+  if (finalizeStatus.value) {
+    if (finalizeStatus.value === "待重新定稿") {
+      return "status-needs-refinalize";
+    }
+    if (finalizeStatus.value === "草稿待定稿") {
+      return "status-draft-pending";
+    }
+    return "status-finalized";
+  }
+
+  // 否则显示保存状态
   switch (saveStatus.value) {
     case "saving":
       return "status-saving";
@@ -182,5 +226,20 @@ onBeforeUnmount(() => {
 .status-saving {
   color: var(--info, #3b82f6);
   background: rgba(59, 130, 246, 0.1);
+}
+
+.status-finalized {
+  color: var(--success, #22c55e);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.status-needs-refinalize {
+  color: var(--warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.status-draft-pending {
+  color: var(--warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
 }
 </style>

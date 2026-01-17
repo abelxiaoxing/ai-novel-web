@@ -30,6 +30,7 @@ vi.mock("@/api/tasks", () => ({
   generateBlueprint: vi.fn().mockResolvedValue({ task_id: "task-b" }),
   generateBatch: (...args: unknown[]) => mockGenerateBatch(...args),
   generateDraft: (...args: unknown[]) => mockGenerateDraft(...args),
+  getVectorstoreSummary: vi.fn().mockResolvedValue({ total_count: 0, groups: [] }),
   importKnowledge: vi.fn().mockResolvedValue({ task_id: "task-i" }),
 }));
 

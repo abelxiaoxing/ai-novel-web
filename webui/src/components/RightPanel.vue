@@ -161,7 +161,7 @@
         <input ref="fileInput" type="file" class="file-input" @change="handleFile" />
         <div class="action-row">
           <button class="btn btn-ghost" @click="openFilePicker">导入知识库</button>
-          <button class="btn btn-outline" @click="$emit('clear-vectorstore')">清空向量库</button>
+          <button class="btn btn-ghost" @click="$emit('manage-vectorstore')">管理向量库</button>
         </div>
       </div>
     </div>
@@ -201,7 +201,7 @@ const emit = defineEmits<{
   (event: "run", action: string): void;
   (event: "next-chapter"): void;
   (event: "import-knowledge", file: File): void;
-  (event: "clear-vectorstore"): void;
+  (event: "manage-vectorstore"): void;
   (event: "toggle"): void;
 }>();
 

@@ -35,6 +35,7 @@
         :title="editorTitle"
         :subtitle="editorSubtitle"
         :content="projectStore.editorContent"
+        :active-file="projectStore.activeFile"
         @update:content="projectStore.setEditorContent"
         @save="handleSaveActiveFile"
       />
@@ -46,7 +47,7 @@
         @run="runAction"
         @next-chapter="handleNextChapter"
         @import-knowledge="handleKnowledgeImport"
-        @clear-vectorstore="handleVectorStoreClear"
+        @manage-vectorstore="handleVectorstoreManage"
         @toggle="panelStore.toggle('rightPanel')"
       />
 
@@ -68,6 +69,15 @@
       @confirm="usePrompt"
     />
 
+    <VectorstoreModal
+      v-if="vectorstoreModalOpen && projectStore.currentProject"
+      :project-id="projectStore.currentProject.id"
+      :embedding-config-name="form.embeddingConfigName"
+      @close="vectorstoreModalOpen = false"
+      @cleared="handleVectorstoreCleared"
+      @deleted-chapter="handleVectorstoreDeletedChapter"
+    />
+
   </div>
 </template>
 
@@ -78,6 +88,7 @@ import BottomPanel from "@/components/BottomPanel.vue";
 import EditorPane from "@/components/EditorPane.vue";
 import GlobalProgressBar from "@/components/GlobalProgressBar.vue";
 import PromptModal from "@/components/PromptModal.vue";
+import VectorstoreModal from "@/components/VectorstoreModal.vue";
 import RightPanel, { type WorkbenchForm } from "@/components/RightPanel.vue";
 import Sidebar from "@/components/Sidebar.vue";
 import TopBar from "@/components/TopBar.vue";
@@ -101,6 +112,7 @@ import {
   generateBlueprint,
   generateBatch,
   generateDraft,
+  getVectorstoreSummary,
   importKnowledge,
 } from "@/api/tasks";
 
@@ -115,6 +127,7 @@ const panelStore = usePanelStore();
 
 const promptModalOpen = ref(false);
 const promptText = ref("");
+const vectorstoreModalOpen = ref(false);
 const pendingPromptTask = ref<string | null>(null);
 const handledTasks = ref(new Set<string>());
 const stateLoaded = ref(false);
@@ -527,7 +540,72 @@ const fetchProjectFileContent = async (fileKey: string): Promise<string> => {
   }
 };
 
-const syncWorkflowFromProject = async (): Promise<boolean> => {
+const resolveEmbeddingConfigName = (): string | undefined => {
+  if (form.embeddingConfigName) {
+    return form.embeddingConfigName;
+  }
+  if (configStore.chooseConfigs.embedding) {
+    return configStore.chooseConfigs.embedding;
+  }
+  if (configStore.embeddingConfigs.length > 0) {
+    return configStore.embeddingConfigs[0];
+  }
+  return undefined;
+};
+
+const loadVectorstoreChapters = async (): Promise<Set<number> | null> => {
+  const projectId = projectStore.currentProject?.id;
+  if (!projectId) {
+    return null;
+  }
+  try {
+    const embeddingConfigName = resolveEmbeddingConfigName();
+    const summary = await getVectorstoreSummary(projectId, embeddingConfigName);
+    const chapters = new Set<number>();
+    summary.groups.forEach((group) => {
+      if (group.type === "chapter" && typeof group.chapter === "number") {
+        chapters.add(group.chapter);
+      }
+    });
+    return chapters;
+  } catch (error) {
+    console.warn("Failed to load vectorstore summary for workflow sync.", error);
+    return null;
+  }
+};
+
+const applyVectorstoreStatus = (
+  chapterStatuses: Record<number, ChapterState>,
+  vectorstoreChapters: Set<number>
+): { chapterStatuses: Record<number, ChapterState>; updated: boolean } => {
+  let updated = false;
+  const nextStatuses: Record<number, ChapterState> = { ...chapterStatuses };
+
+  Object.entries(chapterStatuses).forEach(([chapterKey, state]) => {
+    const chapterNumber = Number(chapterKey);
+    if (!Number.isInteger(chapterNumber)) {
+      return;
+    }
+    if (state.status !== "finalized") {
+      return;
+    }
+    const existsInVectorstore = vectorstoreChapters.has(chapterNumber);
+    if (!existsInVectorstore && !state.deletedFromVectorstore) {
+      nextStatuses[chapterNumber] = { ...state, deletedFromVectorstore: true };
+      updated = true;
+    }
+    if (existsInVectorstore && state.deletedFromVectorstore) {
+      nextStatuses[chapterNumber] = { ...state, deletedFromVectorstore: false };
+      updated = true;
+    }
+  });
+
+  return { chapterStatuses: updated ? nextStatuses : chapterStatuses, updated };
+};
+
+const syncWorkflowFromProject = async (
+  options: { checkVectorstore?: boolean } = {}
+): Promise<boolean> => {
   const projectId = projectStore.currentProject?.id;
   if (!projectId) {
     return false;
@@ -539,7 +617,7 @@ const syncWorkflowFromProject = async (): Promise<boolean> => {
 
   // 从 workflowSnapshot 获取章节状态
   const snapshotStatuses = workflowSnapshot.value.chapterStatuses ?? {};
-  const { chapterStatuses, updated } = reconcileChapterStatuses(chapters, snapshotStatuses);
+  let { chapterStatuses, updated } = reconcileChapterStatuses(chapters, snapshotStatuses);
   if (updated) {
     workflowSnapshot.value = { chapterStatuses };
   }
@@ -550,6 +628,18 @@ const syncWorkflowFromProject = async (): Promise<boolean> => {
 
   // hasFinalize: 检查是否存在任意章节已定稿
   const hasFinalize = Object.values(chapterStatuses).some((state) => state.status === "finalized");
+
+  if (options.checkVectorstore && hasFinalize) {
+    const vectorstoreChapters = await loadVectorstoreChapters();
+    if (vectorstoreChapters) {
+      const vectorstoreResult = applyVectorstoreStatus(chapterStatuses, vectorstoreChapters);
+      chapterStatuses = vectorstoreResult.chapterStatuses;
+      if (vectorstoreResult.updated) {
+        updated = true;
+        workflowSnapshot.value = { chapterStatuses };
+      }
+    }
+  }
 
   const [architectureText, blueprintText] = await Promise.all([
     fetchProjectFileContent("architecture"),
@@ -693,7 +783,7 @@ const loadProjectState = async () => {
       await projectStore.openFile(fallback);
     }
   }
-  const workflowUpdated = await syncWorkflowFromProject();
+  const workflowUpdated = await syncWorkflowFromProject({ checkVectorstore: true });
   stateLoaded.value = true;
   if (workflowUpdated) {
     queueSaveState();
@@ -1085,12 +1175,22 @@ const handleKnowledgeImport = async (file: File) => {
   await runTask("导入知识库", () => importKnowledge(projectId, formData));
 };
 
-const handleVectorStoreClear = async () => {
-  const projectId = projectStore.currentProject?.id;
-  if (!projectId) {
-    return;
-  }
-  await runTask("清空向量库", () => clearVectorStore(projectId));
+const handleVectorstoreManage = () => {
+  vectorstoreModalOpen.value = true;
+};
+
+const handleVectorstoreCleared = () => {
+  // 标记所有已定稿的章节需要重新定稿
+  workflowStore.markAllChaptersDeletedFromVectorstore();
+  queueSaveState();
+  toastStore.success("向量库已清空");
+};
+
+const handleVectorstoreDeletedChapter = (chapter: number) => {
+  // 标记该章节需要重新定稿
+  workflowStore.markChapterDeletedFromVectorstore(chapter);
+  toastStore.warning(`第 ${chapter} 章的向量记录已删除，需要重新定稿`);
+  queueSaveState();
 };
 
 const parseChapterNumber = (name: string): number | null => {
