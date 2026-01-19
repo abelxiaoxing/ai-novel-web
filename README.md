@@ -34,54 +34,123 @@
 ## 🛠 环境准备
 确保满足以下运行条件：
 - **Python 3.9+** 运行环境（推荐3.10-3.12之间）
-- **pip** 包管理工具
+- **uv** Python包管理工具
+- **Node.js** 18+ 环境（用于 Web UI）
 - 有效API密钥：
   - 云端服务：OpenAI / DeepSeek 等
   - 本地服务：Ollama 等兼容 OpenAI 的接口
 
+### 安装 uv
+
+#### Linux
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+#### Windows
+```powershell
+# PowerShell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+#### 通用安装方式
+```bash
+pip install uv
+```
+
 ---
 
-
 ## 📥 安装说明
-1. **下载项目**  
-   - 通过 [GitHub](https://github.com) 下载项目 ZIP 文件，或使用以下命令克隆本项目：
-     ```bash
-     git clone https://github.com/abelxiaoxing/ai-novel-web
-     ```
 
-2. **安装编译工具（略）**  
+### 1. 下载项目
+通过 [GitHub](https://github.com) 下载项目 ZIP 文件，或使用以下命令克隆本项目：
+```bash
+git clone https://github.com/abelxiaoxing/ai-novel-web
+```
 
-3. **安装依赖并运行**  
-   - 打开终端，进入项目源文件目录：
-     ```bash
-     cd ai-novel-web
-     ```
-   - 安装项目依赖：
-     ```bash
-     pip install -r requirements.txt
-     ```
-   - 安装 Web UI 依赖：
-     ```bash
-     npm --prefix webui install
-     ```
-   - 启动后端服务：
-     ```bash
-     python -m uvicorn backend.api_server:app --host 0.0.0.0 --port 8000
-     ```
-   - 启动 Web UI（新终端）：
-     ```bash
-     npm --prefix webui run dev
-     ```
-   - 或使用脚本一键启动：
-     ```bash
-     scripts/dev.sh
-     ```
+### 2. 安装编译工具
+部分 Python 依赖包需要编译，请确保系统已安装编译工具：
 
->如果缺失部分依赖，后续**手动执行**
->```bash
->pip install XXX
->```
->进行安装即可
+#### Ubuntu
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential python3-dev
+```
+
+#### Arch Linux
+```bash
+sudo pacman -S base-devel python
+```
+
+#### Windows
+通常无需额外工具，如遇问题请安装 [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+
+### 3. 安装依赖并运行
+
+#### Linux
+
+1. 打开终端，进入项目目录：
+```bash
+cd ai-novel-web
+```
+
+2. 安装 Python 依赖：
+```bash
+uv sync
+```
+
+3. 安装 Web UI 依赖：
+```bash
+npm --prefix webui install
+```
+
+4. 启动后端服务：
+```bash
+uv run uvicorn backend.api_server:app --host 0.0.0.0 --port 8000
+```
+
+5. 启动 Web UI（新开一个终端）：
+```bash
+npm --prefix webui run dev
+```
+
+或使用一键启动脚本：
+```bash
+bash scripts/dev.sh
+```
+
+#### Windows
+
+1. 打开 PowerShell 或命令提示符，进入项目目录：
+```powershell
+cd ai-novel-web
+```
+
+2. 安装 Python 依赖：
+```powershell
+uv sync
+```
+
+3. 安装 Web UI 依赖：
+```powershell
+npm --prefix webui install
+```
+
+4. 启动后端服务：
+```powershell
+uv run uvicorn backend.api_server:app --host 0.0.0.0 --port 8000
+```
+
+5. 启动 Web UI（新开一个终端）：
+```powershell
+npm --prefix webui run dev
+```
+
+> **依赖补充说明**  
+> 如果安装过程中缺失部分依赖，可后续手动执行：
+> ```bash
+> uv add XXX
+> ```
 
 ## 🗂 项目架构
 ```
@@ -137,7 +206,7 @@ ai-novel-web/
     "architecture_llm": "my_llm",
     "chapter_outline_llm": "my_llm",
     "prompt_draft_llm": "my_llm",
-    "finalize_llm": "my_llm",
+    "final_chapter_llm": "my_llm",
     "consistency_llm": "my_llm"
   }
 }
@@ -151,20 +220,35 @@ ai-novel-web/
 ---
 
 ## 🚀 运行说明
-### **方式 1：手动启动**
+
+### Linux
+
+**方式 1：手动启动**
 ```bash
-python -m uvicorn backend.api_server:app --host 0.0.0.0 --port 8000
-```
-另开一个终端启动前端：
-```bash
+# 终端 1 - 启动后端
+uv run uvicorn backend.api_server:app --host 0.0.0.0 --port 8000
+
+# 终端 2 - 启动前端
 npm --prefix webui run dev
 ```
-执行后，在浏览器打开 Web 工作台进行操作。
 
-### **方式 2：一键启动**
+**方式 2：一键启动**
 ```bash
-scripts/dev.sh
+bash scripts/dev.sh
 ```
+
+### Windows
+
+**方式 1：手动启动**
+```powershell
+# 终端 1 - 启动后端
+uv run uvicorn backend.api_server:app --host 0.0.0.0 --port 8000
+
+# 终端 2 - 启动前端
+npm --prefix webui run dev
+```
+
+启动后在浏览器打开 `http://localhost:5173` 即可访问 Web 工作台。
 
 ---
 
@@ -180,11 +264,11 @@ scripts/dev.sh
 
 2. **点击「Step1. 生成设定」**  
    - 系统将基于主题、类型、章节数等信息，生成：  
-     - `Novel_setting.txt`：包含世界观、角色信息、雷点暗线等。  
-   - 可以在生成后的 `Novel_setting.txt` 中查看或修改设定内容。
+     - `Novel_architecture.txt`：包含世界观、角色信息、雷点暗线等。  
+   - 可以在生成后的 `Novel_architecture.txt` 中查看或修改设定内容。
 
 3. **点击「Step2. 生成目录」**  
-   - 系统会根据已完成的 `Novel_setting.txt` 内容，为全部章节生成：  
+   - 系统会根据已完成的 `Novel_architecture.txt` 内容，为全部章节生成：  
      - `Novel_directory.txt`：包括每章标题和简要提示。  
    - 可以在生成后的文件中查看、修改或补充章节标题和描述。
 
@@ -195,7 +279,7 @@ scripts/dev.sh
    - 点击按钮后，系统将：  
      - 自动读取前文设定、`Novel_directory.txt`、以及已定稿章节  
      - 调用向量检索回顾剧情，保证上下文连贯  
-     - 生成本章大纲 (`outline_X.txt`) 及正文 (`chapter_X.txt`)  
+     - 生成本章正文 (`chapter_X.txt`)  
    - 生成完成后，你可在左侧的文本框查看、编辑本章草稿内容。
 
 5. **点击「Step4. 定稿当前章节」**  
@@ -203,7 +287,7 @@ scripts/dev.sh
      - **更新全局摘要**（写入 `global_summary.txt`）  
      - **更新角色状态**（写入 `character_state.txt`）  
      - **更新向量检索库**（保证后续章节可以调用最新信息）  
-     - **更新剧情要点**（如 `plot_arcs.txt`）  
+     - **剧情要点** (`plot_arcs.txt`) 需手动维护，用于一致性检查参考  
    - 定稿完成后，你可以在 `chapter_X.txt` 中看到定稿后的文本。
 
 6. **一致性检查（可选）**  
@@ -212,13 +296,22 @@ scripts/dev.sh
 
 7. **重复第 4-6 步** 直到所有章节生成并定稿！
 
-> **向量检索配置提示**  
-> 1. embedding模型需要显示指定接口和模型名称；
-> 2. 使用**本地Ollama**的**Embedding**时需提前启动Ollama服务：  
+> **向量检索配置提示**
+> 1. embedding模型需要显示指定接口和模型名称
+> 2. 使用**本地Ollama**的**Embedding**时需提前启动Ollama服务：
+>
+>    ** Linux:**
 >    ```bash
 >    ollama serve  # 启动服务
 >    ollama pull nomic-embed-text  # 下载/启用模型
 >    ```
+>
+>    **Windows:**
+>    ```powershell
+>    ollama serve  # 启动服务
+>    ollama pull nomic-embed-text  # 下载/启用模型
+>    ```
+>
 > 3. 切换不同Embedding模型后建议清空vectorstore目录
 > 4. 云端Embedding需确保对应API权限已开通
 

@@ -25,7 +25,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "Starting backend on :${API_PORT}..."
-python -m uvicorn backend.api_server:app --host 0.0.0.0 --port "${API_PORT}" &
+uv run uvicorn backend.api_server:app --host 0.0.0.0 --port "${API_PORT}" &
 API_PID=$!
 
 echo "Starting frontend on :${WEB_PORT}..."
