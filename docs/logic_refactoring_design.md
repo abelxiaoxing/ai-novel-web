@@ -5,7 +5,45 @@
 - 范围：以当前代码实现为依据，明确数据流、状态与依赖，记录核心逻辑架构。
 - 说明：项目已完成 UI 与核心逻辑的分离，形成 Web UI + Backend API + 核心生成引擎的三层架构。
 
-## 1. 当前核心逻辑梳理（以代码为准）
+## 0.1 整体数据流图（概览）
+
+```mermaid
+graph TB
+    subgraph "输入层"
+        A[用户配置] -->|Config| B[配置管理器]
+        C[小说参数] -->|topic, genre, chapters, word_count| B
+        D[用户指导] -->|user_guidance| B
+    end
+
+    subgraph "核心处理层"
+        B --> E[架构生成模块]
+        E --> F[目录生成模块]
+        F --> G[章节撰写模块]
+        G --> H[定稿与状态更新模块]
+    end
+
+    subgraph "记忆管理层"
+        I[向量库<br/>vectorstore/] -->|检索| G
+        J[角色状态<br/>character_state.txt] <-->|读取/更新| H
+        K[全局摘要<br/>global_summary.txt] <-->|读取/更新| H
+        L[章节文件<br/>chapters/chapter_n.txt] -->|历史上下文| G
+    end
+
+    subgraph "持久化层"
+        M[Novel_architecture.txt]
+        N[Novel_directory.txt]
+        O[chapters/]
+    end
+
+    E --> M
+    F --> N
+    G --> O
+    H --> I
+    H --> J
+    H --> K
+```
+
+## 1. 当前核心逻辑梳理
 
 ### 1.1 核心模块与职责
 
