@@ -24,16 +24,33 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+# 尝试获取局域网IP地址并更新VITE_API_BASE
+if command -v python3 >/dev/null 2>&1; then
+  LAN_IP=$(python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()" 2>/dev/null || echo "")
+  if [[ -n "${LAN_IP}" ]]; then
+    VITE_API_BASE_LAN="http://${LAN_IP}:${API_PORT}"
+    echo "Detected LAN IP: ${LAN_IP}"
+  fi
+fi
+
 echo "Starting backend on :${API_PORT}..."
 uv run uvicorn backend.api_server:app --host 0.0.0.0 --port "${API_PORT}" &
 API_PID=$!
 
 echo "Starting frontend on :${WEB_PORT}..."
-VITE_API_BASE="${VITE_API_BASE}" npm --prefix "${ROOT_DIR}/webui" run dev -- --port "${WEB_PORT}" &
+VITE_API_BASE="${VITE_API_BASE}" npm --prefix "${ROOT_DIR}/webui" run dev -- --host 0.0.0.0 --port "${WEB_PORT}" &
 WEB_PID=$!
 
 echo "Backend PID: ${API_PID}"
 echo "Frontend PID: ${WEB_PID}"
-echo "VITE_API_BASE: ${VITE_API_BASE}"
+echo "VITE_API_BASE (localhost): ${VITE_API_BASE}"
+if [[ -n "${VITE_API_BASE_LAN:-}" ]]; then
+  echo "VITE_API_BASE (LAN): ${VITE_API_BASE_LAN}"
+fi
+echo ""
+echo "Access from this machine: http://localhost:${WEB_PORT}"
+if [[ -n "${VITE_API_BASE_LAN:-}" ]]; then
+  echo "Access from LAN: http://${LAN_IP}:${WEB_PORT}"
+fi
 
 wait "${API_PID}" "${WEB_PID}"
