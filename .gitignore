@@ -9,3 +9,6 @@ webui/.vite
 webui/.env
 webui/.env.local
 app.log
+.ace-tool/
+.claude/
+openspec/

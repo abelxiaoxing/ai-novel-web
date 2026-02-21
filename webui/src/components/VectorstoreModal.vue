@@ -215,6 +215,7 @@ onMounted(() => {
   max-height: 80vh;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 .modal-header {

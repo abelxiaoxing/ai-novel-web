@@ -38,7 +38,7 @@ defineEmits(["close"]);
 .modal-panel {
   width: min(540px, 90vw);
   max-height: 85vh;
-  overflow-y: auto;
+  overflow-y: hidden;
   background: linear-gradient(145deg, rgba(20, 30, 45, 0.98), rgba(12, 20, 32, 0.98));
   border-radius: 20px;
   border: 1px solid rgba(95, 170, 230, 0.35);

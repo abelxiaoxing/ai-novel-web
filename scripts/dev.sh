@@ -8,10 +8,8 @@ VITE_API_BASE="${VITE_API_BASE:-http://localhost:${API_PORT}}"
 
 cd "${ROOT_DIR}"
 
-# 自动激活虚拟环境
-if [[ -d "${ROOT_DIR}/.venv" ]]; then
-  source "${ROOT_DIR}/.venv/bin/activate"
-fi
+# uv 管理 Python 环境和依赖，无需手动激活虚拟环境
+# 确保依赖已安装: uv sync
 
 cleanup() {
   if [[ -n "${API_PID:-}" ]]; then
@@ -34,7 +32,7 @@ if command -v python3 >/dev/null 2>&1; then
 fi
 
 echo "Starting backend on :${API_PORT}..."
-uv run uvicorn backend.api_server:app --host 0.0.0.0 --port "${API_PORT}" &
+uv run python -m uvicorn backend.api_server:app --host 0.0.0.0 --port "${API_PORT}" &
 API_PID=$!
 
 echo "Starting frontend on :${WEB_PORT}..."

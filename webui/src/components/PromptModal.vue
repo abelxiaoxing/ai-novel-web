@@ -42,6 +42,7 @@ const confirm = () => {
   height: 92vh;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 .prompt-editor {
