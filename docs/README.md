@@ -37,8 +37,7 @@
 - **uv** Python包管理工具
 - **Node.js** 18+ 环境（用于 Web UI）
 - 有效API密钥：
-  - 云端服务：OpenAI / DeepSeek 等
-  - 本地服务：Ollama 等兼容 OpenAI 的接口
+  - 云端服务：OpenAI / DeepSeek / Gemini / Azure 等
 
 ### 安装 uv
 
@@ -98,6 +97,7 @@ cd ai-novel-web
 ```bash
 uv sync
 ```
+> 默认安装为云端 API 轻量依赖，不包含本地模型运行时（如 Torch）。
 
 3. 安装 Web UI 依赖：
 ```bash
@@ -130,6 +130,7 @@ cd ai-novel-web
 ```powershell
 uv sync
 ```
+> 默认安装为云端 API 轻量依赖，不包含本地模型运行时（如 Torch）。
 
 3. 安装 Web UI 依赖：
 ```powershell
@@ -320,20 +321,5 @@ bash scripts/dev.sh
 
 > **向量检索配置提示**
 > 1. embedding模型需要显示指定接口和模型名称
-> 2. 使用**本地Ollama**的**Embedding**时需提前启动Ollama服务：
->
->    ** Linux:**
->    ```bash
->    ollama serve  # 启动服务
->    ollama pull nomic-embed-text  # 下载/启用模型
->    ```
->
->    **Windows:**
->    ```powershell
->    ollama serve  # 启动服务
->    ollama pull nomic-embed-text  # 下载/启用模型
->    ```
->
-> 3. 切换不同Embedding模型后建议清空vectorstore目录
-> 4. 云端Embedding需确保对应API权限已开通
-
+> 2. 切换不同Embedding模型后建议清空vectorstore目录
+> 3. 云端Embedding需确保对应API权限已开通

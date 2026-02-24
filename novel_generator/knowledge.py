@@ -5,17 +5,12 @@
 """
 import os
 import logging
-import re
 import traceback
 import nltk
-import warnings
 from utils import read_file
 from novel_generator.vectorstore_utils import load_vector_store, init_vector_store
 from langchain.docstore.document import Document
 
-# 禁用特定的Torch警告
-warnings.filterwarnings('ignore', message='.*Torch was not compiled with flash attention.*')
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
 logging.basicConfig(
     filename='app.log',      # 日志文件名
     filemode='a',            # 追加模式（'w' 会覆盖）
@@ -72,7 +67,7 @@ def import_knowledge_file(
     embedding_adapter = create_embedding_adapter(
         embedding_interface_format,
         embedding_api_key,
-        embedding_url if embedding_url else "http://localhost:11434/api",
+        embedding_url,
         embedding_model_name
     )
     store = load_vector_store(embedding_adapter, filepath)

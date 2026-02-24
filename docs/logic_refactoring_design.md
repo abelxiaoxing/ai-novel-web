@@ -72,8 +72,8 @@ graph TB
 #### 根目录工具模块
 | 模块 | 职责 |
 | --- | --- |
-| `llm_adapters.py` | LLM 适配器工厂（支持 OpenAI、DeepSeek、Gemini、Azure、Ollama 等） |
-| `embedding_adapters.py` | Embedding 适配器工厂（支持 OpenAI、Azure、Ollama 等） |
+| `llm_adapters.py` | LLM 适配器工厂（支持 OpenAI、DeepSeek、Gemini、Azure 等） |
+| `embedding_adapters.py` | Embedding 适配器工厂（支持 OpenAI、Azure、Gemini、SiliconFlow） |
 | `prompt_definitions.py` | 全部提示词模板 |
 | `chapter_directory_parser.py` | 章节蓝图解析与章节信息提取 |
 | `consistency_checker.py` | 一致性检查（LLM 审校） |
@@ -357,7 +357,7 @@ FILE_KEY_MAP = {
 | --- | --- |
 | 前端 | Vue 3, TypeScript, Pinia, Vite |
 | 后端 | FastAPI, Pydantic, uvicorn |
-| LLM 集成 | LangChain, 多适配器（OpenAI/DeepSeek/Gemini/Azure/Ollama） |
+| LLM 集成 | LangChain, 多适配器（OpenAI/DeepSeek/Gemini/Azure） |
 | 向量库 | Chroma, LangChain Embeddings |
 | 文本处理 | NLTK (sent_tokenize) |
 

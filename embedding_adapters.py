@@ -81,123 +81,12 @@ class AzureOpenAIEmbeddingAdapter(BaseEmbeddingAdapter):
             api_version=self.api_version,
             timeout=timeout,  # 添加超时配置，默认 60 秒
         )
-        if match:
-            self.azure_endpoint = f"https://{match.group(1)}"
-            self.azure_deployment = match.group(2)
-            self.api_version = match.group(3)
-        else:
-            raise ValueError("Invalid Azure OpenAI base_url format")
-
-        self._embedding = AzureOpenAIEmbeddings(
-            azure_endpoint=self.azure_endpoint,
-            azure_deployment=self.azure_deployment,
-            openai_api_key=api_key,
-            api_version=self.api_version,
-        )
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         return self._embedding.embed_documents(texts)
 
     def embed_query(self, query: str) -> List[float]:
         return self._embedding.embed_query(query)
-
-
-class OllamaEmbeddingAdapter(BaseEmbeddingAdapter):
-    """
-    其接口路径为 /api/embeddings
-    """
-
-    def __init__(self, model_name: str, base_url: str):
-        self.model_name = model_name
-        self.base_url = base_url.rstrip("/")
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        embeddings = []
-        for text in texts:
-            vec = self._embed_single(text)
-            embeddings.append(vec)
-        return embeddings
-
-    def embed_query(self, query: str) -> List[float]:
-        return self._embed_single(query)
-
-    def _embed_single(self, text: str) -> List[float]:
-        """
-        调用 Ollama 本地服务 /api/embeddings 接口，获取文本 embedding
-        """
-        url = self.base_url.rstrip("/")
-        if "/api/embeddings" not in url:
-            if "/api" in url:
-                url = f"{url}/embeddings"
-            else:
-                if "/v1" in url:
-                    url = url[: url.index("/v1")]
-                url = f"{url}/api/embeddings"
-
-        data = {"model": self.model_name, "prompt": text}
-        try:
-            response = requests.post(url, json=data, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            if "embedding" not in result:
-                raise ValueError("No 'embedding' field in Ollama response.")
-            return result["embedding"]
-        except requests.exceptions.RequestException as e:
-            logging.error(
-                f"Ollama embeddings request error: {e}\n{traceback.format_exc()}"
-            )
-            return []
-
-
-class MLStudioEmbeddingAdapter(BaseEmbeddingAdapter):
-    """
-    基于 LM Studio 的 embedding 适配器
-    """
-
-    def __init__(self, api_key: str, base_url: str, model_name: str):
-        self.url = ensure_openai_base_url_has_v1(base_url)
-        if not self.url.endswith("/embeddings"):
-            self.url = f"{self.url}/embeddings"
-
-        self.headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        self.model_name = model_name
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        try:
-            payload = {"input": texts, "model": self.model_name}
-            response = requests.post(self.url, json=payload, headers=self.headers, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            if "data" not in result:
-                logging.error(f"Invalid response format from LM Studio API: {result}")
-                return [[]] * len(texts)
-            return [item.get("embedding", []) for item in result["data"]]
-        except requests.exceptions.RequestException as e:
-            logging.error(f"LM Studio API request failed: {str(e)}")
-            return [[]] * len(texts)
-        except (KeyError, IndexError, ValueError, TypeError) as e:
-            logging.error(f"Error parsing LM Studio API response: {str(e)}")
-            return [[]] * len(texts)
-
-    def embed_query(self, query: str) -> List[float]:
-        try:
-            payload = {"input": query, "model": self.model_name}
-            response = requests.post(self.url, json=payload, headers=self.headers, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            if "data" not in result or not result["data"]:
-                logging.error(f"Invalid response format from LM Studio API: {result}")
-                return []
-            return result["data"][0].get("embedding", [])
-        except requests.exceptions.RequestException as e:
-            logging.error(f"LM Studio API request failed: {str(e)}")
-            return []
-        except (KeyError, IndexError, ValueError, TypeError) as e:
-            logging.error(f"Error parsing LM Studio API response: {str(e)}")
-            return []
 
 
 class GeminiEmbeddingAdapter(BaseEmbeddingAdapter):
@@ -236,7 +125,6 @@ class GeminiEmbeddingAdapter(BaseEmbeddingAdapter):
 
         try:
             response = requests.post(url, json=payload, timeout=60)
-            print(response.text)
             response.raise_for_status()
             result = response.json()
             embedding_data = result.get("embedding", {})
@@ -329,10 +217,8 @@ def create_embedding_adapter(
         return OpenAIEmbeddingAdapter(api_key, base_url, model_name)
     elif fmt == "azure openai":
         return AzureOpenAIEmbeddingAdapter(api_key, base_url, model_name)
-    elif fmt == "ollama":
-        return OllamaEmbeddingAdapter(model_name, base_url)
-    elif fmt == "ml studio":
-        return MLStudioEmbeddingAdapter(api_key, base_url, model_name)
+    elif fmt in ("ollama", "ml studio"):
+        raise ValueError("当前版本已移除本地向量接口（Ollama/ML Studio），请改用云端 Embedding 接口。")
     elif fmt == "gemini":
         return GeminiEmbeddingAdapter(api_key, model_name, base_url)
     elif fmt == "siliconflow":

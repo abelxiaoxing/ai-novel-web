@@ -7,11 +7,6 @@ import os
 import logging
 import traceback
 import nltk
-import numpy as np
-import re
-import ssl
-import requests
-import warnings
 from langchain_chroma import Chroma
 logging.basicConfig(
     filename='app.log',      # 日志文件名
@@ -20,13 +15,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-# 禁用特定的Torch警告
-warnings.filterwarnings('ignore', message='.*Torch was not compiled with flash attention.*')
-os.environ["TOKENIZERS_PARALLELISM"] = "false"  # 禁用tokenizer并行警告
 
 from chromadb.config import Settings
 from langchain.docstore.document import Document
-from sklearn.metrics.pairwise import cosine_similarity
 from .common import call_with_retry
 
 def get_vectorstore_dir(filepath: str) -> str:
@@ -154,8 +145,7 @@ def split_by_length(text: str, max_length: int = 500):
 
 def split_text_for_vectorstore(chapter_text: str, max_length: int = 500, similarity_threshold: float = 0.7):
     """
-    对新的章节文本进行分段后,再用于存入向量库。
-    使用 embedding 进行文本相似度计算。
+    对新的章节文本进行分段后用于存入向量库。
     """
     if not chapter_text.strip():
         return []
@@ -195,7 +185,6 @@ def update_vector_store(embedding_adapter, new_chapter: str, filepath: str, chap
     若库不存在则初始化；若初始化/更新失败，则跳过。
     如果提供 chapter_number，会先删除该章节的旧文档再添加新文档（支持重新定稿）。
     """
-    from utils import read_file, clear_file_content, save_string_to_txt
     splitted_texts = split_text_for_vectorstore(new_chapter)
     if not splitted_texts:
         logging.warning("No valid text to insert into vector store. Skipping.")
@@ -256,19 +245,3 @@ def get_relevant_context_from_vector_store(embedding_adapter, query: str, filepa
         logging.warning(f"Similarity search failed: {e}")
         traceback.print_exc()
         return ""
-
-def _get_sentence_transformer(model_name: str = 'paraphrase-MiniLM-L6-v2'):
-    """获取sentence transformer模型，处理SSL问题"""
-    try:
-        # 设置torch环境变量
-        os.environ["TORCH_ALLOW_TF32_CUBLAS_OVERRIDE"] = "0"
-        os.environ["TORCH_CUDNN_V8_API_ENABLED"] = "0"
-        
-        # 禁用SSL验证
-        ssl._create_default_https_context = ssl._create_unverified_context
-        
-        # ...existing code...
-    except Exception as e:
-        logging.error(f"Failed to load sentence transformer model: {e}")
-        traceback.print_exc()
-        return None
