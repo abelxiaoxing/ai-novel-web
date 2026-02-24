@@ -19,7 +19,7 @@
           <input class="input-field" type="number" v-model="form.num_chapters" />
         </label>
         <label class="field">
-          <span class="field-label">目标字数</span>
+          <span class="field-label">每章字数</span>
           <input class="input-field" type="number" v-model="form.word_number" />
         </label>
       </div>

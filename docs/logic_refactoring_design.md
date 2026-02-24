@@ -149,7 +149,7 @@ graph TB
 3. 按句子切分（NLTK `sent_tokenize`，max_length=500）并更新向量库（`update_vector_store`）。
 
 #### 1.3.6 章节扩写（`enrich_chapter_text`）
-对章节文本进行扩写，使其更接近目标字数，保持剧情连贯。
+对章节文本进行扩写，使其更接近每章字数，保持剧情连贯。
 
 #### 1.3.7 知识库导入（`import_knowledge_file`）
 1. NLTK 分段（`advanced_split_content`，500 字符上限）。
