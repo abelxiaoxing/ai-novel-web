@@ -20,6 +20,9 @@ defineEmits(["close"]);
   backdrop-filter: blur(8px);
   display: grid;
   place-items: center;
+  padding: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
   z-index: 100;
   opacity: 0;
   animation: backdropFadeIn 0.2s ease forwards;
@@ -36,13 +39,16 @@ defineEmits(["close"]);
 }
 
 .modal-panel {
-  width: min(540px, 90vw);
-  max-height: 85vh;
-  overflow-y: hidden;
+  width: min(540px, 100%);
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
   background: linear-gradient(145deg, rgba(20, 30, 45, 0.98), rgba(12, 20, 32, 0.98));
   border-radius: 20px;
   border: 1px solid rgba(95, 170, 230, 0.35);
   padding: 28px;
+  box-sizing: border-box;
   box-shadow:
     0 25px 60px rgba(5, 10, 20, 0.7),
     0 0 0 1px rgba(47, 155, 255, 0.1),
