@@ -28,54 +28,60 @@
     </section>
     <button class="btn btn-outline" @click="$router.push('/')">返回项目列表</button>
 
-    <ModalShell v-if="chooseModalOpen" @close="chooseModalOpen = false">
+    <ModalShell
+      v-if="chooseModalOpen"
+      panel-class="settings-modal settings-modal--choose"
+      @close="chooseModalOpen = false"
+    >
       <div class="modal-header">
         <h2>默认配置选择</h2>
         <p class="muted">为各任务指定默认使用的模型配置。</p>
       </div>
-      <div class="modal-body">
-        <label class="field">
-          <span class="field-label">架构生成</span>
-          <select class="select-field" v-model="chooseForm.architecture_llm">
-            <option value="">自动选择</option>
-            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field-label">章节蓝图</span>
-          <select class="select-field" v-model="chooseForm.chapter_outline_llm">
-            <option value="">自动选择</option>
-            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field-label">提示词/草稿</span>
-          <select class="select-field" v-model="chooseForm.prompt_draft_llm">
-            <option value="">自动选择</option>
-            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field-label">章节定稿</span>
-          <select class="select-field" v-model="chooseForm.finalize_llm">
-            <option value="">自动选择</option>
-            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field-label">一致性检查</span>
-          <select class="select-field" v-model="chooseForm.consistency_llm">
-            <option value="">自动选择</option>
-            <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field-label">向量模型</span>
-          <select class="select-field" v-model="chooseForm.embedding">
-            <option value="">自动选择</option>
-            <option v-for="name in configStore.embeddingConfigs" :key="name" :value="name">{{ name }}</option>
-          </select>
-        </label>
+      <div class="modal-body choose-modal-body">
+        <div class="choose-grid">
+          <label class="field">
+            <span class="field-label">架构生成</span>
+            <select class="select-field" v-model="chooseForm.architecture_llm">
+              <option value="">自动选择</option>
+              <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">章节蓝图</span>
+            <select class="select-field" v-model="chooseForm.chapter_outline_llm">
+              <option value="">自动选择</option>
+              <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">提示词/草稿</span>
+            <select class="select-field" v-model="chooseForm.prompt_draft_llm">
+              <option value="">自动选择</option>
+              <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">章节定稿</span>
+            <select class="select-field" v-model="chooseForm.finalize_llm">
+              <option value="">自动选择</option>
+              <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">一致性检查</span>
+            <select class="select-field" v-model="chooseForm.consistency_llm">
+              <option value="">自动选择</option>
+              <option v-for="name in configStore.llmConfigs" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">向量模型</span>
+            <select class="select-field" v-model="chooseForm.embedding">
+              <option value="">自动选择</option>
+              <option v-for="name in configStore.embeddingConfigs" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </label>
+        </div>
         <p v-if="chooseError" class="form-error">{{ chooseError }}</p>
         <p v-if="chooseSaving" class="form-muted">保存中...</p>
         <div class="action-row">
@@ -84,29 +90,33 @@
       </div>
     </ModalShell>
 
-    <ModalShell v-if="configModalOpen" @close="configModalOpen = false">
+    <ModalShell
+      v-if="configModalOpen"
+      panel-class="settings-modal settings-modal--config"
+      @close="configModalOpen = false"
+    >
       <div class="modal-header">
         <h2>{{ configModalTitle }}</h2>
         <p class="muted">编辑后保存会直接更新本地配置文件。</p>
       </div>
-      <div class="modal-body">
-        <label class="field">
-          <span class="field-label">选择配置</span>
-          <select class="select-field" :value="selectedConfigName" @change="handleConfigSelect">
-            <option v-if="!configNames.length" value="">暂无配置</option>
-            <option v-for="name in configNames" :key="name" :value="name">{{ name }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field-label">配置内容（JSON）</span>
-          <textarea class="textarea-field code-field" rows="10" v-model="configJson"></textarea>
-        </label>
-        <div class="field-row">
+      <div class="modal-body config-modal-body">
+        <div class="field-row config-meta-row">
+          <label class="field">
+            <span class="field-label">选择配置</span>
+            <select class="select-field" :value="selectedConfigName" @change="handleConfigSelect">
+              <option v-if="!configNames.length" value="">暂无配置</option>
+              <option v-for="name in configNames" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </label>
           <label class="field">
             <span class="field-label">新配置名称</span>
             <input class="input-field" v-model="newConfigName" placeholder="输入新名称" />
           </label>
         </div>
+        <label class="field">
+          <span class="field-label">配置内容（JSON）</span>
+          <textarea class="textarea-field code-field" rows="9" v-model="configJson"></textarea>
+        </label>
         <p v-if="configError" class="form-error">{{ configError }}</p>
         <p v-if="configTestMessage" :class="configTestClass">{{ configTestMessage }}</p>
         <p v-if="configSaving" class="form-muted">保存中...</p>
@@ -125,41 +135,47 @@
       </div>
     </ModalShell>
 
-    <ModalShell v-if="proxyModalOpen" @close="proxyModalOpen = false">
+    <ModalShell
+      v-if="proxyModalOpen"
+      panel-class="settings-modal settings-modal--proxy"
+      @close="proxyModalOpen = false"
+    >
       <div class="modal-header">
         <h2>代理与同步配置</h2>
         <p class="muted">代理将影响接口请求，WebDAV 用于备份设置。</p>
       </div>
-      <div class="modal-body">
-        <div class="section-inline">
-          <h3>代理设置</h3>
-          <label class="field">
-            <span class="field-label">代理地址</span>
-            <input class="input-field" v-model="proxyForm.proxy_url" placeholder="127.0.0.1" />
-          </label>
-          <label class="field">
-            <span class="field-label">代理端口</span>
-            <input class="input-field" v-model="proxyForm.proxy_port" placeholder="7890" />
-          </label>
-          <label class="checkbox-row">
-            <input type="checkbox" v-model="proxyForm.enabled" />
-            <span>启用代理</span>
-          </label>
-        </div>
-        <div class="section-inline">
-          <h3>WebDAV 同步</h3>
-          <label class="field">
-            <span class="field-label">WebDAV 地址</span>
-            <input class="input-field" v-model="proxyForm.webdav_url" placeholder="https://dav.example.com" />
-          </label>
-          <label class="field">
-            <span class="field-label">账号</span>
-            <input class="input-field" v-model="proxyForm.webdav_username" />
-          </label>
-          <label class="field">
-            <span class="field-label">密码</span>
-            <input class="input-field" type="password" v-model="proxyForm.webdav_password" />
-          </label>
+      <div class="modal-body proxy-modal-body">
+        <div class="proxy-grid">
+          <div class="section-inline">
+            <h3>代理设置</h3>
+            <label class="field">
+              <span class="field-label">代理地址</span>
+              <input class="input-field" v-model="proxyForm.proxy_url" placeholder="127.0.0.1" />
+            </label>
+            <label class="field">
+              <span class="field-label">代理端口</span>
+              <input class="input-field" v-model="proxyForm.proxy_port" placeholder="7890" />
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" v-model="proxyForm.enabled" />
+              <span>启用代理</span>
+            </label>
+          </div>
+          <div class="section-inline">
+            <h3>WebDAV 同步</h3>
+            <label class="field">
+              <span class="field-label">WebDAV 地址</span>
+              <input class="input-field" v-model="proxyForm.webdav_url" placeholder="https://dav.example.com" />
+            </label>
+            <label class="field">
+              <span class="field-label">账号</span>
+              <input class="input-field" v-model="proxyForm.webdav_username" />
+            </label>
+            <label class="field">
+              <span class="field-label">密码</span>
+              <input class="input-field" type="password" v-model="proxyForm.webdav_password" />
+            </label>
+          </div>
         </div>
         <p v-if="proxyError" class="form-error">{{ proxyError }}</p>
         <p v-if="proxySaving" class="form-muted">保存中...</p>
@@ -691,6 +707,33 @@ onMounted(() => {
   gap: 16px;
 }
 
+:deep(.modal-panel.settings-modal) {
+  padding: clamp(20px, 2.8vh, 28px);
+}
+
+:deep(.modal-panel.settings-modal--choose),
+:deep(.modal-panel.settings-modal--proxy) {
+  width: min(760px, 100%);
+}
+
+:deep(.modal-panel.settings-modal--config) {
+  width: min(920px, 100%);
+}
+
+.choose-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.config-meta-row {
+  align-items: flex-end;
+}
+
+.config-modal-body {
+  gap: 14px;
+}
+
 /* 表单字段样式 */
 .field {
   display: flex;
@@ -778,6 +821,21 @@ onMounted(() => {
   border-bottom: none;
 }
 
+.proxy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.proxy-grid .section-inline,
+.proxy-grid .section-inline:last-child {
+  border-bottom: none;
+  border: 1px solid rgba(95, 170, 230, 0.18);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(9, 16, 26, 0.4);
+}
+
 .section-inline h3 {
   margin: 0;
   font-size: 15px;
@@ -817,6 +875,26 @@ onMounted(() => {
   height: 18px;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  :deep(.modal-panel.settings-modal--config) {
+    width: min(760px, 100%);
+  }
+
+  .proxy-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .choose-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .config-meta-row {
+    align-items: stretch;
+  }
 }
 
 @keyframes fadeInUp {

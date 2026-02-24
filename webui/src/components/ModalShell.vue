@@ -1,15 +1,97 @@
 <template>
   <Teleport to="body">
     <div class="modal-backdrop" @click.self="$emit('close')">
-      <div class="modal-panel">
-        <slot />
+      <div
+        ref="panelRef"
+        class="modal-panel"
+        :class="[panelClass, { 'modal-panel--scrollable': panelScrollable }]"
+      >
+        <div ref="contentRef" class="modal-content">
+          <slot />
+        </div>
       </div>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
+import { nextTick, onBeforeUnmount, onMounted, onUpdated, ref } from "vue";
+
+type PanelClass = string | string[] | Record<string, boolean>;
+
 defineEmits(["close"]);
+
+defineProps<{
+  panelClass?: PanelClass;
+}>();
+
+const panelRef = ref<HTMLElement | null>(null);
+const contentRef = ref<HTMLElement | null>(null);
+const panelScrollable = ref(false);
+let resizeRaf = 0;
+let resizeObserver: ResizeObserver | null = null;
+
+const updateScrollableState = () => {
+  const panel = panelRef.value;
+  const content = contentRef.value;
+  if (!panel || !content) {
+    panelScrollable.value = false;
+    return;
+  }
+  const overflowHeight = content.scrollHeight - panel.clientHeight;
+  panelScrollable.value = overflowHeight > 6;
+};
+
+const queueUpdateScrollableState = () => {
+  if (typeof requestAnimationFrame !== "function") {
+    updateScrollableState();
+    return;
+  }
+  if (resizeRaf) {
+    cancelAnimationFrame(resizeRaf);
+  }
+  resizeRaf = requestAnimationFrame(() => {
+    resizeRaf = 0;
+    updateScrollableState();
+  });
+};
+
+onMounted(async () => {
+  await nextTick();
+  queueUpdateScrollableState();
+  window.addEventListener("resize", queueUpdateScrollableState);
+  if (typeof ResizeObserver === "function") {
+    resizeObserver = new ResizeObserver(() => {
+      queueUpdateScrollableState();
+    });
+    if (panelRef.value) {
+      resizeObserver.observe(panelRef.value);
+    }
+    if (contentRef.value) {
+      resizeObserver.observe(contentRef.value);
+    }
+  }
+});
+
+onUpdated(() => {
+  queueUpdateScrollableState();
+  if (resizeObserver && contentRef.value) {
+    resizeObserver.disconnect();
+    if (panelRef.value) {
+      resizeObserver.observe(panelRef.value);
+    }
+    resizeObserver.observe(contentRef.value);
+  }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", queueUpdateScrollableState);
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+  if (resizeRaf && typeof cancelAnimationFrame === "function") {
+    cancelAnimationFrame(resizeRaf);
+  }
+});
 </script>
 
 <style scoped>
@@ -22,7 +104,7 @@ defineEmits(["close"]);
   place-items: center;
   padding: 16px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: hidden;
   z-index: 100;
   opacity: 0;
   animation: backdropFadeIn 0.2s ease forwards;
@@ -41,9 +123,9 @@ defineEmits(["close"]);
 .modal-panel {
   width: min(540px, 100%);
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: hidden;
   background: linear-gradient(145deg, rgba(20, 30, 45, 0.98), rgba(12, 20, 32, 0.98));
   border-radius: 20px;
   border: 1px solid rgba(95, 170, 230, 0.35);
@@ -60,10 +142,26 @@ defineEmits(["close"]);
   will-change: transform, opacity;
 }
 
+.modal-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.modal-panel--scrollable {
+  overflow-y: auto;
+}
+
+@supports not (height: 100dvh) {
+  .modal-panel {
+    max-height: calc(100vh - 32px);
+  }
+}
+
 .modal-panel::before {
   content: "";
   position: absolute;
-  inset: -1px;
+  inset: 0;
   border-radius: 20px;
   background: linear-gradient(
     135deg,
