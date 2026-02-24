@@ -3,7 +3,7 @@
     <div class="panel-header">
       <div>
         <div class="panel-title">{{ title }}</div>
-        <div class="muted">{{ subtitle }}</div>
+        <div v-if="subtitle" class="muted">{{ subtitle }}</div>
       </div>
       <div class="editor-meta">
         <span class="muted">{{ charCount }} 字</span>

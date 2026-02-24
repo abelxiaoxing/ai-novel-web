@@ -395,9 +395,17 @@ const localizePath = (path: string) => {
 const editorTitle = computed(() =>
   projectStore.activeFile ? projectStore.activeFile.name : "请选择文件"
 );
-const editorSubtitle = computed(() =>
-  projectStore.activeFile ? localizePath(projectStore.activeFile.path) : "打开项目文件进行编辑"
-);
+const editorSubtitle = computed(() => {
+  if (!projectStore.activeFile) {
+    return "打开项目文件进行编辑";
+  }
+  const name = projectStore.activeFile.name;
+  const path = localizePath(projectStore.activeFile.path);
+  if (name === path) {
+    return "";
+  }
+  return path;
+});
 
 const resolveOutputFile = (fileKey: string): ActiveFile | null => {
   if (!fileKey) {
