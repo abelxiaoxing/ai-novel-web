@@ -245,6 +245,19 @@ export const useWorkflowStore = defineStore("workflow", {
     },
 
     /**
+     * 标记指定章节为草稿待定稿
+     */
+    markChapterDraftPending(chapter: number): void {
+      this.setChapterStatus(chapter, "draft-pending");
+      if (chapter === this.currentChapter) {
+        if (!this.completedSteps.includes("draft")) {
+          this.completedSteps = [...this.completedSteps, "draft"];
+        }
+        this.currentStep = "draft";
+      }
+    },
+
+    /**
      * Mark current chapter as modified (needs re-finalization)
      */
     markChapterModified(chapter: number): void {
@@ -272,7 +285,7 @@ export const useWorkflowStore = defineStore("workflow", {
         this.hasBlueprint = true;
       } else if (step === "draft") {
         // 单章草稿生成完成，标记为草稿待定稿
-        this.setChapterStatus(this.currentChapter, "draft-pending");
+        this.markChapterDraftPending(this.currentChapter);
       }
 
       // Advance current step to the next available step
@@ -287,9 +300,18 @@ export const useWorkflowStore = defineStore("workflow", {
      * 同时从 completedSteps 移除 draft，避免切换章节后仍认为 draft 已完成
      */
     finalizeChapter(): void {
-      this.setChapterStatus(this.currentChapter, "finalized");
-      // 移除 draft 步骤，因为 draft 是针对特定章节的
-      this.completedSteps = this.completedSteps.filter((s) => s !== "draft");
+      this.markChapterFinalized(this.currentChapter);
+    },
+
+    /**
+     * 标记指定章节为已定稿
+     */
+    markChapterFinalized(chapter: number): void {
+      this.setChapterStatus(chapter, "finalized");
+      // 仅在当前章节定稿时移除 draft 步骤
+      if (chapter === this.currentChapter) {
+        this.completedSteps = this.completedSteps.filter((s) => s !== "draft");
+      }
     },
 
     /**

@@ -7,6 +7,7 @@ import WorkbenchView from "./WorkbenchView.vue";
 import { useProjectStore } from "@/stores/project";
 import { useConfigStore } from "@/stores/config";
 import { useTaskStore } from "@/stores/task";
+import { useWorkflowStore } from "@/stores/workflow";
 import PromptModal from "@/components/PromptModal.vue";
 
 const mockGenerateDraft = vi.fn().mockResolvedValue({ task_id: "task-draft" });
@@ -267,6 +268,30 @@ describe("WorkbenchView Properties", () => {
       ),
       { numRuns: 10 }
     );
+
+    wrapper.unmount();
+  });
+
+  it("writes finalize status to the submitted chapter even if current chapter changes", async () => {
+    const { wrapper } = mountWorkbench();
+    const taskStore = useTaskStore();
+    const workflowStore = useWorkflowStore();
+    await nextTick();
+
+    (wrapper.vm as any).form.chapterNumber = "2";
+    await nextTick();
+    await (wrapper.vm as any).runAction("finalize");
+
+    (wrapper.vm as any).form.chapterNumber = "1";
+    await nextTick();
+
+    taskStore.updateTask("task-f", { status: "success" });
+    await nextTick();
+    await nextTick();
+
+    expect(workflowStore.chapterStatuses[2]?.status).toBe("finalized");
+    expect(workflowStore.chapterStatuses[1]?.status).not.toBe("finalized");
+    expect(workflowStore.currentChapter).toBe(1);
 
     wrapper.unmount();
   });

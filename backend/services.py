@@ -157,7 +157,7 @@ def finalize(
     log,
 ) -> Dict[str, Any]:
     log(f"Finalizing chapter {payload['novel_number']}...")
-    finalize_chapter(
+    report = finalize_chapter(
         novel_number=payload["novel_number"],
         word_number=payload["word_number"],
         api_key=llm_config["api_key"],
@@ -172,13 +172,25 @@ def finalize(
         interface_format=llm_config["interface_format"],
         max_tokens=llm_config.get("max_tokens", 2048),
         timeout=llm_config.get("timeout", 900),
+        skip_vectorstore=bool(payload.get("skip_vectorstore", False)),
+        progress_callback=log,
+        llm_max_retries=int(llm_config.get("finalize_max_retries", 3)),
+        parallel_workers=int(llm_config.get("finalize_parallel_workers", 3)),
     )
     log("Finalization completed.")
     summary = read_file(os.path.join(project_root, "global_summary.txt"))
     character_state = read_file(os.path.join(project_root, "character_state.txt"))
+    output_files = ["summary", "character_state"]
+    vectorstore = report.get("vectorstore", {}) if isinstance(report, dict) else {}
+    if vectorstore.get("updated"):
+        output_files.append("vectorstore")
     return {
-        "result": {"global_summary": summary, "character_state": character_state},
-        "output_files": ["summary", "character_state"],
+        "result": {
+            "global_summary": summary,
+            "character_state": character_state,
+            "finalize_report": report,
+        },
+        "output_files": output_files,
     }
 
 
@@ -277,7 +289,7 @@ def batch_generate(
 
         if did_generate:
             log(f"Finalizing chapter {chapter_number}...")
-            finalize_chapter(
+            finalize_report = finalize_chapter(
                 novel_number=chapter_number,
                 word_number=word_number,
                 api_key=llm_config["api_key"],
@@ -292,8 +304,19 @@ def batch_generate(
                 interface_format=llm_config["interface_format"],
                 max_tokens=llm_config.get("max_tokens", 2048),
                 timeout=llm_config.get("timeout", 900),
+                progress_callback=log,
+                llm_max_retries=int(llm_config.get("finalize_max_retries", 3)),
+                parallel_workers=int(llm_config.get("finalize_parallel_workers", 3)),
             )
-            log(f"Chapter {chapter_number} finalized.")
+            total_seconds = (
+                finalize_report.get("timings", {}).get("total_seconds")
+                if isinstance(finalize_report, dict)
+                else None
+            )
+            if total_seconds is not None:
+                log(f"Chapter {chapter_number} finalized in {total_seconds}s.")
+            else:
+                log(f"Chapter {chapter_number} finalized.")
 
         results.append({"chapter": chapter_number, "length": len(chapter_text)})
         log(f"[CHAPTER_DONE] {chapter_number}")

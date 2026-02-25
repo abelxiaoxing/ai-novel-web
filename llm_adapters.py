@@ -65,10 +65,10 @@ class DeepSeekAdapter(BaseLLMAdapter):
 
     def invoke(self, prompt: str) -> str:
         response = self._client.invoke(prompt)
-        if not response:
-            logging.warning("No response from DeepSeekAdapter.")
-            return ""
-        return response.content
+        content = getattr(response, "content", None) if response else None
+        if not content:
+            raise RuntimeError("DeepSeekAdapter 未返回有效内容。")
+        return content
 
 class OpenAIAdapter(BaseLLMAdapter):
     """
@@ -93,10 +93,10 @@ class OpenAIAdapter(BaseLLMAdapter):
 
     def invoke(self, prompt: str) -> str:
         response = self._client.invoke(prompt)
-        if not response:
-            logging.warning("No response from OpenAIAdapter.")
-            return ""
-        return response.content
+        content = getattr(response, "content", None) if response else None
+        if not content:
+            raise RuntimeError("OpenAIAdapter 未返回有效内容。")
+        return content
 
 class GeminiAdapter(BaseLLMAdapter):
     """
@@ -131,14 +131,13 @@ class GeminiAdapter(BaseLLMAdapter):
                 generation_config=generation_config
             )
             
-            if response and response.text:
-                return response.text
-            else:
-                logging.warning("No text response from Gemini API.")
-                return ""
+            text = getattr(response, "text", None) if response else None
+            if text:
+                return text
+            raise RuntimeError("Gemini API 未返回文本内容。")
         except Exception as e:
-            logging.error(f"Gemini API 调用失败: {e}")
-            return ""
+            logging.exception("Gemini API 调用失败")
+            raise RuntimeError(f"Gemini API 调用失败: {e}") from e
 
 class AzureOpenAIAdapter(BaseLLMAdapter):
     """
@@ -172,10 +171,10 @@ class AzureOpenAIAdapter(BaseLLMAdapter):
 
     def invoke(self, prompt: str) -> str:
         response = self._client.invoke(prompt)
-        if not response:
-            logging.warning("No response from AzureOpenAIAdapter.")
-            return ""
-        return response.content
+        content = getattr(response, "content", None) if response else None
+        if not content:
+            raise RuntimeError("AzureOpenAIAdapter 未返回有效内容。")
+        return content
 
 class AzureAIAdapter(BaseLLMAdapter):
     """
@@ -218,14 +217,15 @@ class AzureAIAdapter(BaseLLMAdapter):
                     UserMessage(prompt)
                 ]
             )
-            if response and response.choices:
-                return response.choices[0].message.content
-            else:
-                logging.warning("No response from AzureAIAdapter.")
-                return ""
+            if not response or not getattr(response, "choices", None):
+                raise RuntimeError("Azure AI Inference 未返回 choices。")
+            content = response.choices[0].message.content
+            if not content:
+                raise RuntimeError("Azure AI Inference 返回内容为空。")
+            return content
         except Exception as e:
-            logging.error(f"Azure AI Inference API 调用失败: {e}")
-            return ""
+            logging.exception("Azure AI Inference API 调用失败")
+            raise RuntimeError(f"Azure AI Inference API 调用失败: {e}") from e
 
 # 火山引擎实现
 class VolcanoEngineAIAdapter(BaseLLMAdapter):
@@ -252,13 +252,15 @@ class VolcanoEngineAIAdapter(BaseLLMAdapter):
                 ],
                 timeout=self.timeout  # 添加超时参数
             )
-            if not response:
-                logging.warning("No response from DeepSeekAdapter.")
-                return ""
-            return response.choices[0].message.content
+            if not response or not getattr(response, "choices", None):
+                raise RuntimeError("火山引擎未返回 choices。")
+            content = response.choices[0].message.content
+            if not content:
+                raise RuntimeError("火山引擎返回内容为空。")
+            return content
         except Exception as e:
-            logging.error(f"火山引擎API调用超时或失败: {e}")
-            return ""
+            logging.exception("火山引擎API调用失败")
+            raise RuntimeError(f"火山引擎API调用失败: {e}") from e
 
 class SiliconFlowAdapter(BaseLLMAdapter):
     def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
@@ -284,13 +286,15 @@ class SiliconFlowAdapter(BaseLLMAdapter):
                 ],
                 timeout=self.timeout  # 添加超时参数
             )
-            if not response:
-                logging.warning("No response from DeepSeekAdapter.")
-                return ""
-            return response.choices[0].message.content
+            if not response or not getattr(response, "choices", None):
+                raise RuntimeError("硅基流动未返回 choices。")
+            content = response.choices[0].message.content
+            if not content:
+                raise RuntimeError("硅基流动返回内容为空。")
+            return content
         except Exception as e:
-            logging.error(f"硅基流动API调用超时或失败: {e}")
-            return ""
+            logging.exception("硅基流动API调用失败")
+            raise RuntimeError(f"硅基流动API调用失败: {e}") from e
 # grok實現
 class GrokAdapter(BaseLLMAdapter):
     """
@@ -322,14 +326,15 @@ class GrokAdapter(BaseLLMAdapter):
                 temperature=self.temperature,
                 timeout=self.timeout
             )
-            if response and response.choices:
-                return response.choices[0].message.content
-            else:
-                logging.warning("No response from GrokAdapter.")
-                return ""
+            if not response or not getattr(response, "choices", None):
+                raise RuntimeError("Grok API 未返回 choices。")
+            content = response.choices[0].message.content
+            if not content:
+                raise RuntimeError("Grok API 返回内容为空。")
+            return content
         except Exception as e:
-            logging.error(f"Grok API 调用失败: {e}")
-            return ""
+            logging.exception("Grok API 调用失败")
+            raise RuntimeError(f"Grok API 调用失败: {e}") from e
 
 def create_llm_adapter(
     interface_format: str,

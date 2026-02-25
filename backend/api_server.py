@@ -95,6 +95,7 @@ class FinalizeRequest(BaseModel):
     word_number: int
     llm_config_name: Optional[str] = None
     embedding_config_name: Optional[str] = None
+    skip_vectorstore: Optional[bool] = False
 
 
 class EnrichRequest(BaseModel):

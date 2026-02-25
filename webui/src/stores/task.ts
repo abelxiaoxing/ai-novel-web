@@ -154,7 +154,11 @@ export const useTaskStore = defineStore("tasks", {
         }
       };
       stream.onerror = () => {
-        this.appendLog(taskId, "日志流已断开。");
+        const task = this.tasks.find((item) => item.id === taskId);
+        const isFinished = task ? task.status === "success" || task.status === "failed" : false;
+        if (!isFinished) {
+          this.appendLog(taskId, "日志流已断开。");
+        }
         this.closeStream(taskId);
       };
       this.streams[taskId] = stream;

@@ -4,6 +4,7 @@
 通用重试、清洗、日志工具
 """
 import logging
+import os
 import re
 import time
 import traceback
@@ -75,6 +76,11 @@ def _is_retryable_error(error: Exception) -> bool:
     retry_signals = [
         "jsondecodeerror",
         "expecting value",
+        "empty",
+        "no response",
+        "no content",
+        "未返回",
+        "内容为空",
         "timeout",
         "timed out",
         "rate limit",
@@ -95,25 +101,33 @@ def _retry_backoff_seconds(attempt: int, base: float = 2.0, max_sleep: float = 3
     return min(max_sleep, base * (2 ** (attempt - 1)))
 
 
+def _debug_llm_io_enabled() -> bool:
+    value = os.environ.get("AINOVEL_DEBUG_LLM_IO", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _debug_print_block(title: str, content: str) -> None:
+    if not _debug_llm_io_enabled():
+        return
+    print("\n" + "=" * 50)
+    print(title)
+    print("-" * 50)
+    print(content)
+    print("=" * 50 + "\n")
+
+
 def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 7) -> str:
     """调用 LLM 并清理返回结果"""
-    print("\n" + "="*50)
-    print("发送到 LLM 的提示词:")
-    print("-"*50)
-    print(prompt)
-    print("="*50 + "\n")
+    _debug_print_block("发送到 LLM 的提示词:", prompt)
     
     result = ""
     retry_count = 0
+    logging.info("LLM 调用开始，prompt长度=%s，max_retries=%s", len(prompt), max_retries)
 
     while retry_count < max_retries:
         try:
             result = llm_adapter.invoke(prompt)
-            print("\n" + "="*50)
-            print("LLM 返回的内容:")
-            print("-"*50)
-            print(result)
-            print("="*50 + "\n")
+            _debug_print_block("LLM 返回的内容:", result)
 
             # 清理结果中的特殊格式标记
             result = result.replace("```", "").strip()
@@ -133,11 +147,9 @@ def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 7) -> str:
         except Exception as e:
             retry_count += 1
             logging.warning("LLM invoke failed (%s/%s): %s", retry_count, max_retries, e)
-            print(f"调用失败 ({retry_count}/{max_retries}): {str(e)}")
             if retry_count >= max_retries or not _is_retryable_error(e):
                 raise
             sleep_seconds = _retry_backoff_seconds(retry_count)
-            print(f"将在 {sleep_seconds:.1f} 秒后重试...")
             time.sleep(sleep_seconds)
 
     return result
