@@ -74,37 +74,41 @@ const handleClick = (step: WorkflowStep) => {
 <style scoped>
 .step-indicator {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 16px 12px;
-  position: relative;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
 }
 
 .step {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 8px;
   position: relative;
-  flex: 1;
+  min-height: 36px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  border: 1px solid rgba(125, 186, 233, 0.16);
+  background: rgba(7, 18, 30, 0.42);
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 
 .step-circle {
-  width: 32px;
-  height: 32px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  background: rgba(126, 91, 255, 0.08);
-  border: 2px solid rgba(126, 91, 255, 0.25);
+  background: rgba(47, 155, 255, 0.14);
+  border: 1px solid rgba(125, 186, 233, 0.32);
   color: var(--text-muted);
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   cursor: default;
   position: relative;
-  z-index: 2;
+  z-index: 1;
+  flex-shrink: 0;
 }
 
 .step-number {
@@ -112,33 +116,39 @@ const handleClick = (step: WorkflowStep) => {
 }
 
 .step-icon {
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .step-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
-  text-align: center;
-  white-space: nowrap;
+  text-align: left;
+  line-height: 1.2;
+  white-space: normal;
   transition: color 0.3s ease;
+  min-width: 0;
 }
 
 .step-connector {
   position: absolute;
-  top: 16px;
-  left: calc(50% + 20px);
-  width: calc(100% - 40px);
-  height: 2px;
-  background: rgba(126, 91, 255, 0.15);
-  z-index: 1;
+  left: 19px;
+  bottom: -9px;
+  width: 2px;
+  height: 10px;
+  background: rgba(125, 186, 233, 0.2);
+  z-index: 0;
 }
 
-/* Completed state */
 .step--completed .step-circle {
   background: linear-gradient(135deg, var(--success), #16a34a);
   border-color: var(--success);
   color: white;
-  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+  box-shadow: 0 4px 10px rgba(34, 197, 94, 0.25);
+}
+
+.step--completed {
+  border-color: rgba(34, 197, 94, 0.36);
+  background: rgba(34, 197, 94, 0.08);
 }
 
 .step--completed .step-label {
@@ -146,15 +156,14 @@ const handleClick = (step: WorkflowStep) => {
 }
 
 .step--completed .step-connector {
-  background: var(--success);
+  background: rgba(34, 197, 94, 0.45);
 }
 
-/* Current state */
 .step--current .step-circle {
-  background: linear-gradient(135deg, var(--accent), #5d3bff);
-  border-color: var(--accent);
+  background: linear-gradient(135deg, #2f9bff, #5dc4ff);
+  border-color: rgba(125, 186, 233, 0.95);
   color: white;
-  box-shadow: 0 4px 12px rgba(126, 91, 255, 0.35);
+  box-shadow: 0 2px 10px rgba(47, 155, 255, 0.35);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -163,34 +172,49 @@ const handleClick = (step: WorkflowStep) => {
   font-weight: 600;
 }
 
-/* Disabled state */
+.step--current {
+  border-color: rgba(125, 186, 233, 0.5);
+  background: linear-gradient(180deg, rgba(47, 155, 255, 0.18) 0%, rgba(9, 23, 38, 0.58) 100%);
+  box-shadow: 0 8px 16px rgba(4, 14, 24, 0.3);
+}
+
 .step--disabled .step-circle {
-  background: rgba(15, 11, 22, 0.45);
-  border-color: rgba(229, 225, 245, 0.1);
-  color: rgba(185, 176, 214, 0.4);
+  background: rgba(7, 18, 30, 0.7);
+  border-color: rgba(125, 186, 233, 0.14);
+  color: rgba(139, 163, 199, 0.55);
   cursor: not-allowed;
 }
 
 .step--disabled .step-label {
-  color: rgba(185, 176, 214, 0.4);
+  color: rgba(139, 163, 199, 0.5);
 }
 
-/* Clickable state */
+.step--disabled {
+  border-color: rgba(125, 186, 233, 0.1);
+  background: rgba(7, 18, 30, 0.28);
+}
+
 .step--clickable {
   cursor: pointer;
 }
 
+.step--clickable:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 186, 233, 0.4);
+  background: rgba(47, 155, 255, 0.12);
+}
+
 .step--clickable:hover .step-circle {
-  transform: scale(1.1);
+  border-color: rgba(125, 186, 233, 0.6);
 }
 
 @keyframes pulse {
   0%,
   100% {
-    box-shadow: 0 4px 12px rgba(126, 91, 255, 0.35);
+    box-shadow: 0 2px 10px rgba(47, 155, 255, 0.35);
   }
   50% {
-    box-shadow: 0 4px 20px rgba(126, 91, 255, 0.5);
+    box-shadow: 0 2px 16px rgba(47, 155, 255, 0.52);
   }
 }
 </style>

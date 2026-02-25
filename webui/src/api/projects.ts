@@ -1,4 +1,4 @@
-import { apiFetch, encodePath } from "@/api/client";
+import { ApiError, apiFetch, buildUrl, encodePath } from "@/api/client";
 import type {
   ChapterListResponse,
   FileContentResponse,
@@ -7,6 +7,24 @@ import type {
   ProjectListResponse,
   ProjectState,
 } from "@/api/types";
+
+export type ProjectExportFormat = "txt" | "epub";
+
+function parseFilenameFromDisposition(contentDisposition: string | null): string | null {
+  if (!contentDisposition) {
+    return null;
+  }
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const plainMatch = /filename=\"?([^\";]+)\"?/i.exec(contentDisposition);
+  return plainMatch?.[1] ?? null;
+}
 
 export async function listProjects(): Promise<Project[]> {
   const data = await apiFetch<ProjectListResponse | Project[]>("/api/projects");
@@ -108,4 +126,20 @@ export async function updateProjectState(
     method: "PUT",
     body: JSON.stringify(payload),
   });
+}
+
+export async function downloadProjectExport(
+  projectId: string,
+  format: ProjectExportFormat
+): Promise<{ filename: string; blob: Blob }> {
+  const response = await fetch(buildUrl(`/api/projects/${projectId}/export/${format}`));
+  if (!response.ok) {
+    const message = await response.text();
+    throw new ApiError(message || "导出失败", response.status);
+  }
+  const filename =
+    parseFilenameFromDisposition(response.headers.get("content-disposition")) ??
+    `novel.${format}`;
+  const blob = await response.blob();
+  return { filename, blob };
 }

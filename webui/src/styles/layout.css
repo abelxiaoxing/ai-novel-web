@@ -1,6 +1,7 @@
 .app-grid {
+  --app-right-panel-width: 152px;
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) 320px;
+  grid-template-columns: 120px minmax(0, 1fr) var(--app-right-panel-width);
   grid-template-rows: 56px minmax(0, 1fr) 190px;
   gap: 12px;
   padding: 16px;
@@ -10,7 +11,7 @@
 
 /* 隐藏左侧边栏 */
 .app-grid.no-sidebar {
-  grid-template-columns: 0 minmax(0, 1fr) 320px;
+  grid-template-columns: 0 minmax(0, 1fr) var(--app-right-panel-width);
 }
 
 /* 隐藏右侧边栏 */
@@ -30,7 +31,7 @@
 
 /* 同时隐藏左侧边栏和底部面板 */
 .app-grid.no-sidebar.no-bottom-panel {
-  grid-template-columns: 0 minmax(0, 1fr) 320px;
+  grid-template-columns: 0 minmax(0, 1fr) var(--app-right-panel-width);
   grid-template-rows: 56px minmax(0, 1fr) 0;
 }
 
@@ -235,7 +236,8 @@ button.panel-expand-btn--bottom {
 
 @media (max-width: 1200px) {
   .app-grid {
-    grid-template-columns: 200px minmax(0, 1fr) 280px;
+    --app-right-panel-width: 148px;
+    grid-template-columns: 200px minmax(0, 1fr) var(--app-right-panel-width);
   }
 }
 

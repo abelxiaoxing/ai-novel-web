@@ -35,6 +35,10 @@ vi.mock("@/api/tasks", () => ({
 }));
 
 vi.mock("@/api/projects", () => ({
+  downloadProjectExport: vi.fn().mockResolvedValue({
+    filename: "test.txt",
+    blob: new Blob(["test"], { type: "text/plain" }),
+  }),
   getProjectState: vi.fn().mockResolvedValue({}),
   updateProjectState: (...args: unknown[]) => mockUpdateProjectState(...args),
   getProjectFile: vi.fn().mockResolvedValue({ content: "" }),

@@ -8,6 +8,8 @@
       <StatusPill :label="statusLabel" :variant="statusVariant" />
     </div>
     <div class="top-actions">
+      <button class="btn btn-ghost" :disabled="exportDisabled" @click="$emit('export-txt')">导出 TXT</button>
+      <button class="btn btn-ghost" :disabled="exportDisabled" @click="$emit('export-epub')">导出 EPUB</button>
       <button class="btn btn-ghost" @click="$emit('projects')">项目列表</button>
       <button class="btn btn-ghost" @click="$emit('settings')">设置</button>
     </div>
@@ -24,9 +26,10 @@ defineProps<{
   statusVariant?: "default" | "success" | "warn" | "danger";
   fileCount?: number;
   chapterCount?: number;
+  exportDisabled?: boolean;
 }>();
 
-defineEmits(["projects", "save", "settings"]);
+defineEmits(["projects", "save", "settings", "export-txt", "export-epub"]);
 </script>
 
 <style scoped>

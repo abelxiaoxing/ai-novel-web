@@ -16,6 +16,9 @@
         :status-variant="statusVariant"
         :file-count="fileCount"
         :chapter-count="chapterCount"
+        :export-disabled="chapterCount === 0"
+        @export-txt="handleExport('txt')"
+        @export-epub="handleExport('epub')"
         @projects="goProjects"
         @settings="goSettings"
       />
@@ -94,7 +97,13 @@ import Sidebar from "@/components/Sidebar.vue";
 import TopBar from "@/components/TopBar.vue";
 import type { ProjectState, WorkbenchFormState, WorkflowSnapshot, BatchTaskState } from "@/api/types";
 import type { ChapterState } from "@/stores/workflow";
-import { getProjectFile, getProjectState, updateProjectState } from "@/api/projects";
+import {
+  downloadProjectExport,
+  getProjectFile,
+  getProjectState,
+  updateProjectState,
+  type ProjectExportFormat,
+} from "@/api/projects";
 import { useConfigStore } from "@/stores/config";
 import { useProjectStore, type ActiveFile, type FileNode } from "@/stores/project";
 import { useTaskStore } from "@/stores/task";
@@ -436,6 +445,55 @@ const openOutputFile = async (fileKey: string) => {
     return;
   }
   await projectStore.openFile(target);
+};
+
+const parseErrorMessage = (error: unknown, fallback: string): string => {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+  const message = error.message?.trim();
+  if (!message) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(message);
+    if (parsed && typeof parsed === "object" && "detail" in parsed) {
+      const detail = (parsed as { detail?: unknown }).detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
+      }
+    }
+  } catch {
+    // 非 JSON 字符串，直接使用原始错误信息。
+  }
+  return message;
+};
+
+const triggerDownload = (blob: Blob, filename: string) => {
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+};
+
+const handleExport = async (format: ProjectExportFormat) => {
+  const projectId = projectStore.currentProject?.id;
+  if (!projectId) {
+    return;
+  }
+  const formatLabel = format.toUpperCase();
+  try {
+    const { filename, blob } = await downloadProjectExport(projectId, format);
+    triggerDownload(blob, filename);
+    toastStore.success(`已导出 ${formatLabel}：${filename}`);
+  } catch (error) {
+    toastStore.error(parseErrorMessage(error, `导出 ${formatLabel} 失败`));
+  }
 };
 
 const formKeys: (keyof WorkbenchForm)[] = [

@@ -3,14 +3,16 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from urllib.parse import quote
 from typing import Any, Dict, Optional
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.config_store import ConfigStore
+from backend.exporter import build_project_epub, build_project_txt, sanitize_export_stem
 from backend.file_keys import BASE_FILE_KEYS, resolve_chapter_path, resolve_file_path
 from backend.project_state import load_project_state, save_project_state
 from backend.project_store import ProjectStore
@@ -154,6 +156,17 @@ def _get_project_root(project_id: str) -> str:
     return project_root
 
 
+def _get_project_name(project_id: str) -> str:
+    project = project_store.get_project(project_id)
+    name = str((project or {}).get("name") or "").strip()
+    return name or "novel"
+
+
+def _build_attachment_headers(filename: str) -> Dict[str, str]:
+    encoded = quote(filename)
+    return {"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"}
+
+
 def _resolve_llm_config(purpose: str, name_override: Optional[str]) -> Dict[str, Any]:
     _, llm_config = config_store.resolve_llm_config(purpose, name_override)
     return llm_config
@@ -294,6 +307,38 @@ def rename_chapter(
 def get_project_state(project_id: str) -> Dict[str, Any]:
     project_root = _get_project_root(project_id)
     return load_project_state(project_root)
+
+
+@app.get("/api/projects/{project_id}/export/txt")
+def export_project_txt(project_id: str) -> Response:
+    project_root = _get_project_root(project_id)
+    project_name = _get_project_name(project_id)
+    file_stem = sanitize_export_stem(project_name)
+    try:
+        txt_content = build_project_txt(project_root, project_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=txt_content.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers=_build_attachment_headers(f"{file_stem}.txt"),
+    )
+
+
+@app.get("/api/projects/{project_id}/export/epub")
+def export_project_epub(project_id: str) -> Response:
+    project_root = _get_project_root(project_id)
+    project_name = _get_project_name(project_id)
+    file_stem = sanitize_export_stem(project_name)
+    try:
+        epub_bytes = build_project_epub(project_root, project_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=epub_bytes,
+        media_type="application/epub+zip",
+        headers=_build_attachment_headers(f"{file_stem}.epub"),
+    )
 
 
 @app.put("/api/projects/{project_id}/state")
