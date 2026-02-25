@@ -3,7 +3,13 @@
     <button v-if="bottomPanelVisible" class="panel-collapse-btn panel-collapse-btn--top" type="button" @click="$emit('toggle')" title="收缩">
       <span>▼</span>
     </button>
-    <button v-else class="panel-expand-btn panel-expand-btn--bottom" type="button" @click="$emit('toggle')" title="展开任务日志">
+    <button
+      v-else
+      class="panel-expand-btn panel-expand-btn--bottom"
+      type="button"
+      @click="$emit('toggle')"
+      title="展开任务日志"
+    >
       <span>▲</span>
     </button>
     <!-- 拖拽手柄 -->
@@ -198,6 +204,19 @@ onBeforeUnmount(() => {
   min-height: 0;
   padding: 0;
   border: none;
+  overflow: visible;
+}
+
+/* 收起状态下展开按钮的定位 - 显示在底部 */
+.bottom-panel--collapsed .panel-expand-btn--bottom {
+  top: auto;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 24px;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
 }
 
 .bottom-panel-body {

@@ -90,6 +90,18 @@ const fileCount = computed(() => {
   min-width: 0;
   padding: 0;
   border: none;
+  overflow: visible;
+}
+
+/* 收起状态下展开按钮的定位 - 显示在左侧 */
+.sidebar--collapsed .panel-expand-btn--left {
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 40px;
+  border-left: none;
+  border-radius: 0 8px 8px 0;
 }
 
 .sidebar-body {

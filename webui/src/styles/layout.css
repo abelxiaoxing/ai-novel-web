@@ -206,8 +206,8 @@ button.panel-expand-btn--left {
   right: -8px;
   top: 50%;
   transform: translateY(-50%);
-  width: 16px;
-  height: 48px;
+  width: 24px;
+  height: 40px;
   border-left: none;
   border-radius: 0 8px 8px 0;
 }
@@ -218,8 +218,8 @@ button.panel-expand-btn--right {
   left: -8px;
   top: 50%;
   transform: translateY(-50%);
-  width: 16px;
-  height: 48px;
+  width: 24px;
+  height: 40px;
   border-right: none;
   border-radius: 8px 0 0 8px;
 }
@@ -230,8 +230,8 @@ button.panel-expand-btn--bottom {
   top: -8px;
   left: 50%;
   transform: translateX(-50%);
-  width: 48px;
-  height: 16px;
+  width: 40px;
+  height: 24px;
   border-bottom: none;
   border-radius: 8px 8px 0 0;
 }

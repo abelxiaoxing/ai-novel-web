@@ -300,6 +300,18 @@ const handleFile = (event: Event) => {
   min-width: 0;
   padding: 0;
   border: none;
+  overflow: visible;
+}
+
+/* 收起状态下展开按钮的定位 - 显示在右侧 */
+.right-panel--collapsed .panel-expand-btn--right {
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 40px;
+  border-right: none;
+  border-radius: 8px 0 0 8px;
 }
 
 .right-panel-body {
