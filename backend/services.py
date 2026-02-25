@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional
 from consistency_checker import check_consistency
 from novel_generator.architecture import Novel_architecture_generate
 from novel_generator.blueprint import Chapter_blueprint_generate
-from novel_generator.chapter import build_chapter_prompt, generate_chapter_draft, generate_chapter_draft_stream
+from novel_generator.chapter import build_chapter_prompt, generate_chapter_draft
 from novel_generator.finalization import enrich_chapter_text, finalize_chapter
 from novel_generator.knowledge import import_knowledge_file
 from novel_generator.vectorstore_manager import (
@@ -20,6 +20,96 @@ from utils import read_file, save_string_to_txt
 
 from backend.file_keys import resolve_chapter_path
 from embedding_adapters import create_embedding_adapter
+
+
+DEFAULT_TEMPERATURE = 0.7
+DEFAULT_MAX_TOKENS = 2048
+DEFAULT_TIMEOUT = 900
+DEFAULT_RETRIEVAL_K = 2
+
+
+def _resolve_retrieval_k(payload: Dict[str, Any], embedding_config: Dict[str, Any]) -> int:
+    retrieval_k = payload.get("retrieval_k")
+    if retrieval_k is None:
+        retrieval_k = embedding_config.get("retrieval_k", DEFAULT_RETRIEVAL_K)
+    return int(retrieval_k)
+
+
+def _common_llm_kwargs(
+    llm_config: Dict[str, Any],
+    *,
+    default_max_tokens: int = DEFAULT_MAX_TOKENS,
+) -> Dict[str, Any]:
+    return {
+        "api_key": llm_config["api_key"],
+        "base_url": llm_config["base_url"],
+        "model_name": llm_config["model_name"],
+        "temperature": llm_config.get("temperature", DEFAULT_TEMPERATURE),
+        "interface_format": llm_config["interface_format"],
+        "max_tokens": llm_config.get("max_tokens", default_max_tokens),
+        "timeout": llm_config.get("timeout", DEFAULT_TIMEOUT),
+    }
+
+
+def _common_embedding_kwargs(embedding_config: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "embedding_api_key": embedding_config["api_key"],
+        "embedding_url": embedding_config["base_url"],
+        "embedding_interface_format": embedding_config["interface_format"],
+        "embedding_model_name": embedding_config["model_name"],
+    }
+
+
+def _chapter_generation_kwargs(
+    project_root: str,
+    payload: Dict[str, Any],
+    llm_config: Dict[str, Any],
+    embedding_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        **_common_llm_kwargs(llm_config),
+        **_common_embedding_kwargs(embedding_config),
+        "filepath": project_root,
+        "novel_number": payload["novel_number"],
+        "word_number": payload["word_number"],
+        "user_guidance": payload.get("user_guidance", ""),
+        "characters_involved": payload.get("characters_involved", ""),
+        "key_items": payload.get("key_items", ""),
+        "scene_location": payload.get("scene_location", ""),
+        "time_constraint": payload.get("time_constraint", ""),
+        "embedding_retrieval_k": _resolve_retrieval_k(payload, embedding_config),
+    }
+
+
+def _finalize_kwargs(
+    project_root: str,
+    novel_number: int,
+    word_number: int,
+    llm_config: Dict[str, Any],
+    embedding_config: Dict[str, Any],
+    log,
+    *,
+    skip_vectorstore: bool = False,
+) -> Dict[str, Any]:
+    return {
+        **_common_llm_kwargs(llm_config),
+        **_common_embedding_kwargs(embedding_config),
+        "filepath": project_root,
+        "novel_number": novel_number,
+        "word_number": word_number,
+        "skip_vectorstore": skip_vectorstore,
+        "progress_callback": log,
+        "llm_max_retries": int(llm_config.get("finalize_max_retries", 3)),
+        "parallel_workers": int(llm_config.get("finalize_parallel_workers", 3)),
+    }
+
+
+def _enrich_kwargs(chapter_text: str, word_number: int, llm_config: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        **_common_llm_kwargs(llm_config),
+        "chapter_text": chapter_text,
+        "word_number": word_number,
+    }
 
 
 def generate_architecture(
@@ -40,9 +130,9 @@ def generate_architecture(
         word_number=payload["word_number"],
         filepath=project_root,
         user_guidance=payload.get("user_guidance", ""),
-        temperature=llm_config.get("temperature", 0.7),
-        max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 900),
+        temperature=llm_config.get("temperature", DEFAULT_TEMPERATURE),
+        max_tokens=llm_config.get("max_tokens", DEFAULT_MAX_TOKENS),
+        timeout=llm_config.get("timeout", DEFAULT_TIMEOUT),
     )
     log("Architecture completed.")
     return {"output_files": ["architecture", "character_state"]}
@@ -63,9 +153,9 @@ def generate_blueprint(
         filepath=project_root,
         number_of_chapters=payload["number_of_chapters"],
         user_guidance=payload.get("user_guidance", ""),
-        temperature=llm_config.get("temperature", 0.7),
+        temperature=llm_config.get("temperature", DEFAULT_TEMPERATURE),
         max_tokens=llm_config.get("max_tokens", 4096),
-        timeout=llm_config.get("timeout", 900),
+        timeout=llm_config.get("timeout", DEFAULT_TIMEOUT),
     )
     log("Blueprint completed.")
     return {"output_files": ["directory"]}
@@ -79,30 +169,8 @@ def build_prompt(
     log,
 ) -> Dict[str, Any]:
     log("Building chapter prompt...")
-    retrieval_k = payload.get("retrieval_k")
-    if retrieval_k is None:
-        retrieval_k = embedding_config.get("retrieval_k", 2)
     prompt_text = build_chapter_prompt(
-        api_key=llm_config["api_key"],
-        base_url=llm_config["base_url"],
-        model_name=llm_config["model_name"],
-        filepath=project_root,
-        novel_number=payload["novel_number"],
-        word_number=payload["word_number"],
-        temperature=llm_config.get("temperature", 0.7),
-        user_guidance=payload.get("user_guidance", ""),
-        characters_involved=payload.get("characters_involved", ""),
-        key_items=payload.get("key_items", ""),
-        scene_location=payload.get("scene_location", ""),
-        time_constraint=payload.get("time_constraint", ""),
-        embedding_api_key=embedding_config["api_key"],
-        embedding_url=embedding_config["base_url"],
-        embedding_interface_format=embedding_config["interface_format"],
-        embedding_model_name=embedding_config["model_name"],
-        embedding_retrieval_k=retrieval_k,
-        interface_format=llm_config["interface_format"],
-        max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 900),
+        **_chapter_generation_kwargs(project_root, payload, llm_config, embedding_config)
     )
     log("Prompt ready.")
     return {"result": {"prompt_text": prompt_text}}
@@ -116,30 +184,8 @@ def generate_draft(
     log,
 ) -> Dict[str, Any]:
     log(f"Generating draft for chapter {payload['novel_number']}...")
-    retrieval_k = payload.get("retrieval_k")
-    if retrieval_k is None:
-        retrieval_k = embedding_config.get("retrieval_k", 2)
     chapter_text = generate_chapter_draft(
-        api_key=llm_config["api_key"],
-        base_url=llm_config["base_url"],
-        model_name=llm_config["model_name"],
-        filepath=project_root,
-        novel_number=payload["novel_number"],
-        word_number=payload["word_number"],
-        temperature=llm_config.get("temperature", 0.7),
-        user_guidance=payload.get("user_guidance", ""),
-        characters_involved=payload.get("characters_involved", ""),
-        key_items=payload.get("key_items", ""),
-        scene_location=payload.get("scene_location", ""),
-        time_constraint=payload.get("time_constraint", ""),
-        embedding_api_key=embedding_config["api_key"],
-        embedding_url=embedding_config["base_url"],
-        embedding_interface_format=embedding_config["interface_format"],
-        embedding_model_name=embedding_config["model_name"],
-        embedding_retrieval_k=retrieval_k,
-        interface_format=llm_config["interface_format"],
-        max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 900),
+        **_chapter_generation_kwargs(project_root, payload, llm_config, embedding_config),
         custom_prompt_text=payload.get("custom_prompt_text"),
     )
     log("Draft completed.")
@@ -158,24 +204,15 @@ def finalize(
 ) -> Dict[str, Any]:
     log(f"Finalizing chapter {payload['novel_number']}...")
     report = finalize_chapter(
-        novel_number=payload["novel_number"],
-        word_number=payload["word_number"],
-        api_key=llm_config["api_key"],
-        base_url=llm_config["base_url"],
-        model_name=llm_config["model_name"],
-        temperature=llm_config.get("temperature", 0.7),
-        filepath=project_root,
-        embedding_api_key=embedding_config["api_key"],
-        embedding_url=embedding_config["base_url"],
-        embedding_interface_format=embedding_config["interface_format"],
-        embedding_model_name=embedding_config["model_name"],
-        interface_format=llm_config["interface_format"],
-        max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 900),
-        skip_vectorstore=bool(payload.get("skip_vectorstore", False)),
-        progress_callback=log,
-        llm_max_retries=int(llm_config.get("finalize_max_retries", 3)),
-        parallel_workers=int(llm_config.get("finalize_parallel_workers", 3)),
+        **_finalize_kwargs(
+            project_root,
+            payload["novel_number"],
+            payload["word_number"],
+            llm_config,
+            embedding_config,
+            log,
+            skip_vectorstore=bool(payload.get("skip_vectorstore", False)),
+        )
     )
     log("Finalization completed.")
     summary = read_file(os.path.join(project_root, "global_summary.txt"))
@@ -201,15 +238,7 @@ def enrich(
 ) -> Dict[str, Any]:
     log("Enriching chapter text...")
     enriched = enrich_chapter_text(
-        chapter_text=payload["chapter_text"],
-        word_number=payload["word_number"],
-        api_key=llm_config["api_key"],
-        base_url=llm_config["base_url"],
-        model_name=llm_config["model_name"],
-        temperature=llm_config.get("temperature", 0.7),
-        interface_format=llm_config["interface_format"],
-        max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 900),
+        **_enrich_kwargs(payload["chapter_text"], payload["word_number"], llm_config)
     )
     log("Enrich completed.")
     return {"result": {"chapter_text": enriched}}
@@ -230,6 +259,15 @@ def batch_generate(
     auto_enrich = payload.get("auto_enrich", False)
     resume_existing = payload.get("resume_existing", True)
     delay_seconds = payload.get("delay_seconds", 0) or 0
+    chapter_defaults = {
+        "word_number": word_number,
+        "characters_involved": payload.get("characters_involved", ""),
+        "key_items": payload.get("key_items", ""),
+        "scene_location": payload.get("scene_location", ""),
+        "time_constraint": payload.get("time_constraint", ""),
+        "user_guidance": payload.get("user_guidance", ""),
+        "retrieval_k": _resolve_retrieval_k(payload, embedding_config),
+    }
     results: List[Dict[str, Any]] = []
 
     for chapter_number in range(start_chapter, end_chapter + 1):
@@ -237,9 +275,7 @@ def batch_generate(
             log("Batch cancelled.")
             raise RuntimeError("任务已取消")
         log(f"Drafting chapter {chapter_number}...")
-        retrieval_k = payload.get("retrieval_k")
-        if retrieval_k is None:
-            retrieval_k = embedding_config.get("retrieval_k", 2)
+
         chapter_path = resolve_chapter_path(project_root, chapter_number)
         chapter_text = ""
         did_generate = False
@@ -250,16 +286,7 @@ def batch_generate(
                 chapter_text = existing_text
 
         if not chapter_text:
-            chapter_payload = {
-                "novel_number": chapter_number,
-                "word_number": word_number,
-                "characters_involved": payload.get("characters_involved", ""),
-                "key_items": payload.get("key_items", ""),
-                "scene_location": payload.get("scene_location", ""),
-                "time_constraint": payload.get("time_constraint", ""),
-                "user_guidance": payload.get("user_guidance", ""),
-                "retrieval_k": retrieval_k,
-            }
+            chapter_payload = {"novel_number": chapter_number, **chapter_defaults}
             chapter_text = generate_draft(
                 project_root,
                 chapter_payload,
@@ -272,15 +299,7 @@ def batch_generate(
         if auto_enrich and min_word and len(chapter_text) < min_word:
             log(f"Enriching chapter {chapter_number} for length...")
             enriched = enrich_chapter_text(
-                chapter_text=chapter_text,
-                word_number=word_number,
-                api_key=llm_config["api_key"],
-                base_url=llm_config["base_url"],
-                model_name=llm_config["model_name"],
-                temperature=llm_config.get("temperature", 0.7),
-                interface_format=llm_config["interface_format"],
-                max_tokens=llm_config.get("max_tokens", 2048),
-                timeout=llm_config.get("timeout", 900),
+                **_enrich_kwargs(chapter_text, word_number, llm_config)
             )
             os.makedirs(os.path.dirname(chapter_path), exist_ok=True)
             save_string_to_txt(enriched, chapter_path)
@@ -290,23 +309,14 @@ def batch_generate(
         if did_generate:
             log(f"Finalizing chapter {chapter_number}...")
             finalize_report = finalize_chapter(
-                novel_number=chapter_number,
-                word_number=word_number,
-                api_key=llm_config["api_key"],
-                base_url=llm_config["base_url"],
-                model_name=llm_config["model_name"],
-                temperature=llm_config.get("temperature", 0.7),
-                filepath=project_root,
-                embedding_api_key=embedding_config["api_key"],
-                embedding_url=embedding_config["base_url"],
-                embedding_interface_format=embedding_config["interface_format"],
-                embedding_model_name=embedding_config["model_name"],
-                interface_format=llm_config["interface_format"],
-                max_tokens=llm_config.get("max_tokens", 2048),
-                timeout=llm_config.get("timeout", 900),
-                progress_callback=log,
-                llm_max_retries=int(llm_config.get("finalize_max_retries", 3)),
-                parallel_workers=int(llm_config.get("finalize_parallel_workers", 3)),
+                **_finalize_kwargs(
+                    project_root,
+                    chapter_number,
+                    word_number,
+                    llm_config,
+                    embedding_config,
+                    log,
+                )
             )
             total_seconds = (
                 finalize_report.get("timings", {}).get("total_seconds")
@@ -344,8 +354,8 @@ def run_consistency_check(
         temperature=llm_config.get("temperature", 0.3),
         plot_arcs=payload.get("plot_arcs", ""),
         interface_format=llm_config["interface_format"],
-        max_tokens=llm_config.get("max_tokens", 2048),
-        timeout=llm_config.get("timeout", 900),
+        max_tokens=llm_config.get("max_tokens", DEFAULT_MAX_TOKENS),
+        timeout=llm_config.get("timeout", DEFAULT_TIMEOUT),
     )
     log("Consistency check completed.")
     return {"result": {"result_text": result_text}}

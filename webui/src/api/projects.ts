@@ -26,40 +26,47 @@ function parseFilenameFromDisposition(contentDisposition: string | null): string
   return plainMatch?.[1] ?? null;
 }
 
+function projectPath(projectId: string, suffix = ""): string {
+  return `/api/projects/${projectId}${suffix}`;
+}
+
+function chapterPath(projectId: string, number: number, suffix = ""): string {
+  return projectPath(projectId, `/chapters/${number}${suffix}`);
+}
+
+function jsonBody(payload: unknown): string {
+  return JSON.stringify(payload);
+}
+
 export async function listProjects(): Promise<Project[]> {
   const data = await apiFetch<ProjectListResponse | Project[]>("/api/projects");
-  if (Array.isArray(data)) {
-    return data;
-  }
-  return data.projects ?? [];
+  return Array.isArray(data) ? data : data.projects ?? [];
 }
 
 export async function createProject(payload: Partial<Project>) {
   return apiFetch<Project>("/api/projects", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: jsonBody(payload),
   });
 }
 
 export async function getProject(projectId: string) {
-  return apiFetch<Project>(`/api/projects/${projectId}`);
+  return apiFetch<Project>(projectPath(projectId));
 }
 
 export async function deleteProject(projectId: string) {
-  return apiFetch<void>(`/api/projects/${projectId}`, {
+  return apiFetch<void>(projectPath(projectId), {
     method: "DELETE",
   });
 }
 
 export async function listProjectFiles(projectId: string) {
-  return apiFetch<ProjectFilesResponse | string[]>(
-    `/api/projects/${projectId}/files`
-  );
+  return apiFetch<ProjectFilesResponse | string[]>(projectPath(projectId, "/files"));
 }
 
 export async function getProjectFile(projectId: string, path: string) {
   return apiFetch<FileContentResponse | string>(
-    `/api/projects/${projectId}/files/${encodePath(path)}`
+    projectPath(projectId, `/files/${encodePath(path)}`)
   );
 }
 
@@ -68,22 +75,18 @@ export async function updateProjectFile(
   path: string,
   content: string
 ) {
-  return apiFetch<void>(`/api/projects/${projectId}/files/${encodePath(path)}`, {
+  return apiFetch<void>(projectPath(projectId, `/files/${encodePath(path)}`), {
     method: "PUT",
-    body: JSON.stringify({ content }),
+    body: jsonBody({ content }),
   });
 }
 
 export async function listChapters(projectId: string) {
-  return apiFetch<ChapterListResponse | number[]>(
-    `/api/projects/${projectId}/chapters`
-  );
+  return apiFetch<ChapterListResponse | number[]>(projectPath(projectId, "/chapters"));
 }
 
 export async function getChapter(projectId: string, number: number) {
-  return apiFetch<FileContentResponse | string>(
-    `/api/projects/${projectId}/chapters/${number}`
-  );
+  return apiFetch<FileContentResponse | string>(chapterPath(projectId, number));
 }
 
 export async function updateChapter(
@@ -91,14 +94,14 @@ export async function updateChapter(
   number: number,
   content: string
 ) {
-  return apiFetch<void>(`/api/projects/${projectId}/chapters/${number}`, {
+  return apiFetch<void>(chapterPath(projectId, number), {
     method: "PUT",
-    body: JSON.stringify({ content }),
+    body: jsonBody({ content }),
   });
 }
 
 export async function deleteChapter(projectId: string, number: number) {
-  return apiFetch<void>(`/api/projects/${projectId}/chapters/${number}`, {
+  return apiFetch<void>(chapterPath(projectId, number), {
     method: "DELETE",
   });
 }
@@ -108,23 +111,23 @@ export async function renameChapter(
   number: number,
   newNumber: number
 ) {
-  return apiFetch<void>(`/api/projects/${projectId}/chapters/${number}/rename`, {
+  return apiFetch<void>(chapterPath(projectId, number, "/rename"), {
     method: "POST",
-    body: JSON.stringify({ new_number: newNumber }),
+    body: jsonBody({ new_number: newNumber }),
   });
 }
 
 export async function getProjectState(projectId: string) {
-  return apiFetch<ProjectState>(`/api/projects/${projectId}/state`);
+  return apiFetch<ProjectState>(projectPath(projectId, "/state"));
 }
 
 export async function updateProjectState(
   projectId: string,
   payload: Partial<ProjectState>
 ) {
-  return apiFetch<void>(`/api/projects/${projectId}/state`, {
+  return apiFetch<void>(projectPath(projectId, "/state"), {
     method: "PUT",
-    body: JSON.stringify(payload),
+    body: jsonBody(payload),
   });
 }
 
@@ -132,7 +135,7 @@ export async function downloadProjectExport(
   projectId: string,
   format: ProjectExportFormat
 ): Promise<{ filename: string; blob: Blob }> {
-  const response = await fetch(buildUrl(`/api/projects/${projectId}/export/${format}`));
+  const response = await fetch(buildUrl(projectPath(projectId, `/export/${format}`)));
   if (!response.ok) {
     const message = await response.text();
     throw new ApiError(message || "导出失败", response.status);
