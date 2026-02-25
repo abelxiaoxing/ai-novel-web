@@ -1,8 +1,10 @@
 .app-grid {
+  --app-sidebar-width: 120px;
   --app-right-panel-width: 152px;
+  --app-bottom-panel-height: 190px;
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) var(--app-right-panel-width);
-  grid-template-rows: 56px minmax(0, 1fr) 190px;
+  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr) var(--app-right-panel-width);
+  grid-template-rows: 56px minmax(0, 1fr) var(--app-bottom-panel-height);
   gap: 12px;
   padding: 16px;
   height: 100vh;
@@ -16,7 +18,7 @@
 
 /* 隐藏右侧边栏 */
 .app-grid.no-right-panel {
-  grid-template-columns: 120px minmax(0, 1fr) 0;
+  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr) 0;
 }
 
 /* 隐藏底部面板 */
@@ -37,7 +39,7 @@
 
 /* 同时隐藏右侧边栏和底部面板 */
 .app-grid.no-right-panel.no-bottom-panel {
-  grid-template-columns: 120px minmax(0, 1fr) 0;
+  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr) 0;
   grid-template-rows: 56px minmax(0, 1fr) 0;
 }
 
@@ -236,8 +238,7 @@ button.panel-expand-btn--bottom {
 
 @media (max-width: 1200px) {
   .app-grid {
-    --app-right-panel-width: 148px;
-    grid-template-columns: 200px minmax(0, 1fr) var(--app-right-panel-width);
+    grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr) var(--app-right-panel-width);
   }
 }
 
@@ -261,4 +262,80 @@ button.panel-expand-btn--bottom {
     grid-column: 1 / 2 !important;
     grid-row: 3 / 4 !important;
   }
+}
+
+/* 拖拽手柄样式 */
+.resize-handle {
+  position: absolute;
+  z-index: 100;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.resize-handle:hover,
+.resize-handle--active {
+  background: var(--accent, rgba(47, 155, 255, 0.5));
+}
+
+/* 水平方向拖拽手柄（用于左右面板） */
+.resize-handle--horizontal {
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+}
+
+/* 垂直方向拖拽手柄（用于底部面板） */
+.resize-handle--vertical {
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: row-resize;
+}
+
+/* 左侧面板 - 手柄在右侧 */
+.sidebar .resize-handle--horizontal {
+  right: -3px;
+}
+
+/* 右侧面板 - 手柄在左侧 */
+.right-panel .resize-handle--horizontal {
+  left: -3px;
+}
+
+/* 底部面板 - 手柄在顶部 */
+.bottom-panel .resize-handle--vertical {
+  top: -3px;
+}
+
+/* 拖拽时的视觉指示器 */
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  background: var(--accent, rgba(47, 155, 255, 0.3));
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.resize-handle--horizontal::after {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  border-radius: 1px;
+}
+
+.resize-handle--vertical::after {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.resize-handle:hover::after,
+.resize-handle--active::after {
+  opacity: 1;
 }

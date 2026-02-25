@@ -1,10 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import fc from "fast-check";
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
+import { createPinia, setActivePinia } from "pinia";
 import BottomPanel from "./BottomPanel.vue";
 
 describe("BottomPanel Properties", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
   it("auto scrolls to the newest log entry", async () => {
     await fc.assert(
       fc.asyncProperty(

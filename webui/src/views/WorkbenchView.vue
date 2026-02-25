@@ -8,7 +8,15 @@
       :cancel-disabled="batchCancelRequested"
       @cancel="cancelBatch"
     />
-    <div class="app-grid" :class="[batchRunning ? 'with-progress' : '', panelStore.gridClass].filter(Boolean).join(' ')">
+    <div
+      class="app-grid"
+      :class="[batchRunning ? 'with-progress' : '', panelStore.gridClass].filter(Boolean).join(' ')"
+      :style="{
+        '--app-sidebar-width': `${panelStore.sidebarWidth}px`,
+        '--app-right-panel-width': `${panelStore.rightPanelWidth}px`,
+        '--app-bottom-panel-height': `${panelStore.bottomPanelHeight}px`,
+      }"
+    >
       <TopBar
         :project-name="projectStore.currentProject?.name"
         :genre="projectStore.currentProject?.genre"

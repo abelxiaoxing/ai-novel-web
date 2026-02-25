@@ -6,6 +6,14 @@
     <button v-else class="panel-expand-btn panel-expand-btn--left" type="button" @click="$emit('toggle')" title="展开项目文件">
       <span>▶</span>
     </button>
+    <!-- 拖拽手柄 -->
+    <div
+      v-if="sidebarVisible"
+      class="resize-handle resize-handle--horizontal"
+      :class="{ 'resize-handle--active': isResizing }"
+      @mousedown="startResize"
+      title="拖拽调整宽度"
+    />
     <div class="panel-header">
       <div class="panel-title">项目文件</div>
     </div>
@@ -22,8 +30,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, toRefs } from "vue";
 import type { FileNode, ActiveFile } from "@/stores/project";
+import { usePanelStore } from "@/stores/panel";
+import { useResizable } from "@/composables/useResizable";
 import FileTree from "@/components/FileTree.vue";
 
 const props = defineProps<{
@@ -38,6 +48,20 @@ const emit = defineEmits<{
   (event: "delete", node: FileNode): void;
   (event: "toggle"): void;
 }>();
+
+const panelStore = usePanelStore();
+const { sidebarWidth } = toRefs(panelStore);
+
+// 使用可拖拽组合式函数
+const { isResizing, startResize } = useResizable({
+  direction: "horizontal",
+  initialSize: sidebarWidth.value,
+  minSize: 80,
+  maxSize: 400,
+  onResize: (size) => {
+    panelStore.updateSize("sidebar", size);
+  },
+});
 
 const fileCount = computed(() => {
   const countNodes = (nodes: FileNode[]): number =>

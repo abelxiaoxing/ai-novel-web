@@ -6,6 +6,14 @@
     <button v-else class="panel-expand-btn panel-expand-btn--bottom" type="button" @click="$emit('toggle')" title="展开任务日志">
       <span>▲</span>
     </button>
+    <!-- 拖拽手柄 -->
+    <div
+      v-if="bottomPanelVisible"
+      class="resize-handle resize-handle--vertical"
+      :class="{ 'resize-handle--active': isResizing }"
+      @mousedown="startResize"
+      title="拖拽调整高度"
+    />
     <div class="panel-header">
       <div class="panel-title">任务日志</div>
       <div class="task-meta">
@@ -52,8 +60,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch, toRefs } from "vue";
 import type { TaskItem } from "@/stores/task";
+import { usePanelStore } from "@/stores/panel";
+import { useResizable } from "@/composables/useResizable";
 
 const props = defineProps<{
   tasks: TaskItem[];
@@ -63,6 +73,21 @@ const props = defineProps<{
 }>();
 
 defineEmits(["select", "open-file", "toggle"]);
+
+const panelStore = usePanelStore();
+const { bottomPanelHeight } = toRefs(panelStore);
+
+// 使用可拖拽组合式函数
+const { isResizing, startResize } = useResizable({
+  direction: "vertical",
+  initialSize: bottomPanelHeight.value,
+  minSize: 80,
+  maxSize: 500,
+  reverse: true, // 向上拖拽增大高度
+  onResize: (size) => {
+    panelStore.updateSize("bottomPanel", size);
+  },
+});
 
 const statusLabel = (status: string) => {
   const map: Record<string, string> = {

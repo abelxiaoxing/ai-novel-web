@@ -6,6 +6,14 @@
     <button v-else class="panel-expand-btn panel-expand-btn--right" type="button" @click="$emit('toggle')" title="展开生成控制">
       <span>◀</span>
     </button>
+    <!-- 拖拽手柄 -->
+    <div
+      v-if="rightPanelVisible"
+      class="resize-handle resize-handle--horizontal"
+      :class="{ 'resize-handle--active': isResizing }"
+      @mousedown="startResize"
+      title="拖拽调整宽度"
+    />
     <div class="panel-header">
       <div class="panel-title-wrap">
         <div class="panel-title">生成控制</div>
@@ -171,8 +179,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, toRefs } from "vue";
 import { useWorkflowStore, type WorkflowStep } from "@/stores/workflow";
+import { usePanelStore } from "@/stores/panel";
+import { useResizable } from "@/composables/useResizable";
 import StepIndicator from "./StepIndicator.vue";
 import HelpTooltip from "./HelpTooltip.vue";
 
@@ -207,7 +217,21 @@ const emit = defineEmits<{
 }>();
 
 const workflowStore = useWorkflowStore();
+const panelStore = usePanelStore();
+const { rightPanelWidth } = toRefs(panelStore);
 const fileInput = ref<HTMLInputElement | null>(null);
+
+// 使用可拖拽组合式函数
+const { isResizing, startResize } = useResizable({
+  direction: "horizontal",
+  initialSize: rightPanelWidth.value,
+  minSize: 80,
+  maxSize: 400,
+  reverse: true, // 向左拖拽增大宽度
+  onResize: (size) => {
+    panelStore.updateSize("rightPanel", size);
+  },
+});
 
 // 当前展开的步骤
 const activeStep = ref<WorkflowStep | null>(null);
