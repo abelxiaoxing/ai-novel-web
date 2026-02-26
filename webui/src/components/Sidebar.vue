@@ -58,7 +58,11 @@ const { isResizing, startResize } = useResizable({
   initialSize: sidebarWidth.value,
   minSize: 80,
   maxSize: 400,
+  getCurrentSize: () => panelStore.sidebarWidth,
   onResize: (size) => {
+    panelStore.updateSize("sidebar", size, { persist: false });
+  },
+  onResizeEnd: (size) => {
     panelStore.updateSize("sidebar", size);
   },
 });

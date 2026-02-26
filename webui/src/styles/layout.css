@@ -11,6 +11,10 @@
   transition: grid-template-columns 0.3s ease, grid-template-rows 0.3s ease;
 }
 
+body.panel-resizing .app-grid {
+  transition: none;
+}
+
 /* 隐藏左侧边栏 */
 .app-grid.no-sidebar {
   grid-template-columns: 0 minmax(0, 1fr) var(--app-right-panel-width);

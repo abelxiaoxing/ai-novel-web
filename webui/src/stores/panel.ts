@@ -95,11 +95,16 @@ export const usePanelStore = defineStore("panel", {
     /**
      * 更新面板尺寸
      */
-    updateSize(type: "sidebar" | "rightPanel" | "bottomPanel", value: number): void {
+    updateSize(
+      type: "sidebar" | "rightPanel" | "bottomPanel",
+      value: number,
+      options: { persist?: boolean } = {}
+    ): void {
       const minWidth = 80;
       const maxWidth = 400;
       const minHeight = 80;
       const maxHeight = 500;
+      const shouldPersist = options.persist ?? true;
 
       if (type === "sidebar") {
         this.sidebarWidth = Math.max(minWidth, Math.min(maxWidth, value));
@@ -109,7 +114,10 @@ export const usePanelStore = defineStore("panel", {
         this.bottomPanelHeight = Math.max(minHeight, Math.min(maxHeight, value));
       }
 
-      // 保存到localStorage
+      if (!shouldPersist) {
+        return;
+      }
+
       saveSizesToStorage({
         sidebarWidth: this.sidebarWidth,
         rightPanelWidth: this.rightPanelWidth,

@@ -89,8 +89,12 @@ const { isResizing, startResize } = useResizable({
   initialSize: bottomPanelHeight.value,
   minSize: 80,
   maxSize: 500,
-  reverse: true, // 向上拖拽增大高度
+  reverse: true,
+  getCurrentSize: () => panelStore.bottomPanelHeight,
   onResize: (size) => {
+    panelStore.updateSize("bottomPanel", size, { persist: false });
+  },
+  onResizeEnd: (size) => {
     panelStore.updateSize("bottomPanel", size);
   },
 });

@@ -227,8 +227,12 @@ const { isResizing, startResize } = useResizable({
   initialSize: rightPanelWidth.value,
   minSize: 80,
   maxSize: 400,
-  reverse: true, // 向左拖拽增大宽度
+  reverse: true,
+  getCurrentSize: () => panelStore.rightPanelWidth,
   onResize: (size) => {
+    panelStore.updateSize("rightPanel", size, { persist: false });
+  },
+  onResizeEnd: (size) => {
     panelStore.updateSize("rightPanel", size);
   },
 });
