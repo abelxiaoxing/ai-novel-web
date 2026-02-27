@@ -454,21 +454,37 @@ const resolveOutputFile = (fileKey: string): ActiveFile | null => {
   };
 };
 
-const openOutputFile = async (fileKey: string) => {
+const openOutputFile = async (
+  fileKey: string,
+  options: { force?: boolean } = {}
+) => {
   const target = resolveOutputFile(fileKey);
   if (!target) {
+    return;
+  }
+  const { force = false } = options;
+  const currentFile = projectStore.activeFile;
+  const canAutoOpen =
+    force ||
+    !currentFile ||
+    (currentFile.kind !== "task-log" && !projectStore.editorContent.trim());
+  if (!canAutoOpen) {
     return;
   }
   await projectStore.openFile(target);
 };
 
-const handleSelectTask = async (taskId: string) => {
+const openTaskLogView = async (taskId: string) => {
   taskStore.activeTaskId = taskId;
   await projectStore.openFile({
     path: "task-log",
     name: "任务日志",
     kind: "task-log",
   });
+};
+
+const handleSelectTask = async (taskId: string) => {
+  await openTaskLogView(taskId);
 };
 
 const parseErrorMessage = (error: unknown, fallback: string): string => {
@@ -1384,10 +1400,7 @@ watch(
         if (task.status === "success") {
           await projectStore.refreshFileTree();
           const outputFile = task.outputFiles?.[0];
-          if (
-            outputFile &&
-            (!projectStore.activeFile || !projectStore.editorContent.trim())
-          ) {
+          if (outputFile) {
             await openOutputFile(outputFile);
           }
         }

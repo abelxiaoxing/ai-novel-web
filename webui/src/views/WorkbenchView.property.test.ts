@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fc from "fast-check";
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { nextTick } from "vue";
 import WorkbenchView from "./WorkbenchView.vue";
@@ -64,7 +64,6 @@ const mountWorkbench = () => {
       plugins: [pinia],
       stubs: {
         ActivityBar: true,
-        BottomPanel: true,
         EditorPane: true,
         Sidebar: true,
         TopBar: true,
@@ -74,6 +73,12 @@ const mountWorkbench = () => {
   });
 
   return { wrapper, projectStore, configStore };
+};
+
+const waitForWorkbenchReady = async () => {
+  await nextTick();
+  await flushPromises();
+  await nextTick();
 };
 
 describe("WorkbenchView Properties", () => {
@@ -91,7 +96,7 @@ describe("WorkbenchView Properties", () => {
 
   it("uses selected model configs when generating drafts", async () => {
     const { wrapper } = mountWorkbench();
-    await nextTick();
+    await waitForWorkbenchReady();
 
     await fc.assert(
       fc.asyncProperty(
@@ -117,7 +122,7 @@ describe("WorkbenchView Properties", () => {
 
   it("persists selected model configs to project state", async () => {
     const { wrapper } = mountWorkbench();
-    await nextTick();
+    await waitForWorkbenchReady();
 
     await fc.assert(
       fc.asyncProperty(
@@ -128,9 +133,11 @@ describe("WorkbenchView Properties", () => {
           (wrapper.vm as any).form.llmConfigName = llmName;
           (wrapper.vm as any).form.embeddingConfigName = embedName;
           await nextTick();
-          await vi.advanceTimersByTimeAsync(500);
+          await flushPromises();
+          await vi.advanceTimersByTimeAsync(600);
+          await flushPromises();
           expect(mockUpdateProjectState).toHaveBeenCalled();
-          const payload = mockUpdateProjectState.mock.calls[0][1] as { form?: Record<string, string> };
+          const payload = mockUpdateProjectState.mock.calls.at(-1)?.[1] as { form?: Record<string, string> };
           expect(payload.form?.llmConfigName).toBe(llmName);
           expect(payload.form?.embeddingConfigName).toBe(embedName);
         }
@@ -175,7 +182,7 @@ describe("WorkbenchView Properties", () => {
 
   it("persists core form fields to project state", async () => {
     const { wrapper } = mountWorkbench();
-    await nextTick();
+    await waitForWorkbenchReady();
 
     await fc.assert(
       fc.asyncProperty(
@@ -190,9 +197,11 @@ describe("WorkbenchView Properties", () => {
           (wrapper.vm as any).form.numberOfChapters = String(chapters);
           (wrapper.vm as any).form.wordNumber = String(words);
           await nextTick();
-          await vi.advanceTimersByTimeAsync(500);
+          await flushPromises();
+          await vi.advanceTimersByTimeAsync(600);
+          await flushPromises();
           expect(mockUpdateProjectState).toHaveBeenCalled();
-          const payload = mockUpdateProjectState.mock.calls[0][1] as { form?: Record<string, string> };
+          const payload = mockUpdateProjectState.mock.calls.at(-1)?.[1] as { form?: Record<string, string> };
           expect(payload.form?.topic).toBe(topic);
           expect(payload.form?.genre).toBe(genre);
           expect(payload.form?.numberOfChapters).toBe(String(chapters));
@@ -221,6 +230,7 @@ describe("WorkbenchView Properties", () => {
         await (wrapper.vm as any).runAction("preview-prompt");
         const taskId = taskStore.activeTaskId as string;
         taskStore.updateTask(taskId, { status: "success", result: { prompt_text: promptText } });
+        await flushPromises();
         await nextTick();
         expect(wrapper.findComponent(PromptModal).exists()).toBe(true);
       }),
@@ -276,17 +286,19 @@ describe("WorkbenchView Properties", () => {
     const { wrapper } = mountWorkbench();
     const taskStore = useTaskStore();
     const workflowStore = useWorkflowStore();
-    await nextTick();
+    await waitForWorkbenchReady();
 
     (wrapper.vm as any).form.chapterNumber = "2";
     await nextTick();
     await (wrapper.vm as any).runAction("finalize");
+    const finalizeTaskId = taskStore.tasks.find((task) => task.label === "章节定稿")?.id;
+    expect(finalizeTaskId).toBeTruthy();
 
     (wrapper.vm as any).form.chapterNumber = "1";
     await nextTick();
 
-    taskStore.updateTask("task-f", { status: "success" });
-    await nextTick();
+    taskStore.updateTask(finalizeTaskId as string, { status: "success" });
+    await flushPromises();
     await nextTick();
 
     expect(workflowStore.chapterStatuses[2]?.status).toBe("finalized");
@@ -295,4 +307,5 @@ describe("WorkbenchView Properties", () => {
 
     wrapper.unmount();
   });
+
 });
