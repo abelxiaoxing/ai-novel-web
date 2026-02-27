@@ -27,7 +27,7 @@ export type FileNode = {
 export type ActiveFile = {
   path: string;
   name: string;
-  kind: "file" | "chapter";
+  kind: "file" | "chapter" | "task-log";
   chapterNumber?: number;
 };
 
@@ -224,6 +224,11 @@ export const useProjectStore = defineStore("project", {
       if (!projectId) {
         return;
       }
+      if (node.kind === "task-log") {
+        this.activeFile = node;
+        this.editorContent = "";
+        return;
+      }
       this.loading = true;
       this.error = null;
       try {
@@ -243,7 +248,7 @@ export const useProjectStore = defineStore("project", {
     },
     async saveActiveFile() {
       const projectId = this.currentProject?.id;
-      if (!projectId || !this.activeFile) {
+      if (!projectId || !this.activeFile || this.activeFile.kind === "task-log") {
         return;
       }
       this.loading = true;

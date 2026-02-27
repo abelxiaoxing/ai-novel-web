@@ -69,7 +69,7 @@ export interface ProjectState {
   form?: WorkbenchFormState;
   activeFile?: {
     path: string;
-    kind: "file" | "chapter";
+    kind: "file" | "chapter" | "task-log";
     chapterNumber?: number;
   };
   workflow?: WorkflowSnapshot;

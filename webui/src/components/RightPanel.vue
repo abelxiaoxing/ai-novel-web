@@ -449,7 +449,7 @@ const handleFile = (event: Event) => {
 }
 
 .step-header:hover:not(:disabled) {
-  background: rgba(47, 155, 255, 0.12);
+  background: rgba(67, 156, 255, 0.2);
 }
 
 .step-header-title {
@@ -505,9 +505,9 @@ const handleFile = (event: Event) => {
   align-items: center;
   gap: 8px;
   width: 100%;
-  background: rgba(47, 155, 255, 0.08);
-  border: 1px solid rgba(125, 186, 233, 0.24);
-  color: var(--text);
+  background: rgba(49, 129, 227, 0.22);
+  border: 1px solid rgba(135, 199, 252, 0.48);
+  color: #edf7ff;
   padding: 8px;
   border-radius: 9px;
   cursor: pointer;
@@ -517,8 +517,8 @@ const handleFile = (event: Event) => {
 }
 
 .section-toggle:hover {
-  background: rgba(47, 155, 255, 0.13);
-  border-color: rgba(125, 186, 233, 0.34);
+  background: rgba(63, 150, 255, 0.32);
+  border-color: rgba(170, 220, 255, 0.72);
 }
 
 .section-body {
@@ -646,10 +646,10 @@ const handleFile = (event: Event) => {
 .chapter-btn {
   padding: 0;
   height: 36px;
-  border: 1px solid rgba(125, 186, 233, 0.24);
-  background: rgba(47, 155, 255, 0.08);
+  border: 1px solid rgba(139, 202, 252, 0.52);
+  background: rgba(43, 123, 212, 0.3);
   font-size: 12px;
-  color: var(--text-muted);
+  color: #eaf6ff;
   border-radius: 8px;
   width: 100%;
   cursor: pointer;
@@ -657,9 +657,9 @@ const handleFile = (event: Event) => {
 }
 
 .chapter-btn:hover {
-  background: rgba(47, 155, 255, 0.2);
-  border-color: rgba(125, 186, 233, 0.45);
-  color: var(--accent-bright);
+  background: rgba(71, 156, 250, 0.42);
+  border-color: rgba(178, 224, 255, 0.76);
+  color: #ffffff;
 }
 
 .btn-preview-prompt {

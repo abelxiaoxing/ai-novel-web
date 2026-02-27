@@ -95,25 +95,36 @@ body.panel-resizing .app-grid {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), #2f6bff);
-  color: #f2edff;
-  box-shadow: 0 8px 20px rgba(47, 155, 255, 0.25);
+  background: linear-gradient(135deg, #1d7df0, #2f6bff);
+  color: #f8fbff;
+  box-shadow: 0 8px 20px rgba(29, 125, 240, 0.35);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
+  filter: brightness(1.08);
 }
 
 .btn-ghost {
-  background: rgba(47, 155, 255, 0.08);
-  border: 1px solid rgba(47, 155, 255, 0.25);
-  color: var(--text);
+  background: rgba(34, 110, 217, 0.32);
+  border: 1px solid rgba(113, 186, 255, 0.6);
+  color: #ebf6ff;
+}
+
+.btn-ghost:hover {
+  background: rgba(49, 131, 245, 0.44);
+  border-color: rgba(156, 212, 255, 0.78);
 }
 
 .btn-outline {
-  background: transparent;
-  border: 1px solid rgba(229, 225, 245, 0.2);
-  color: var(--text-muted);
+  background: rgba(18, 34, 52, 0.82);
+  border: 1px solid rgba(119, 177, 235, 0.62);
+  color: #d8ecff;
+}
+
+.btn-outline:hover {
+  background: rgba(29, 58, 89, 0.88);
+  border-color: rgba(161, 211, 255, 0.8);
 }
 
 .pill {

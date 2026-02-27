@@ -10,11 +10,11 @@
     />
     <div
       class="app-grid"
-      :class="[batchRunning ? 'with-progress' : '', panelStore.gridClass].filter(Boolean).join(' ')"
+      :class="[batchRunning ? 'with-progress' : '', 'no-bottom-panel', panelStore.gridClass].filter(Boolean).join(' ')"
       :style="{
         '--app-sidebar-width': `${panelStore.sidebarWidth}px`,
         '--app-right-panel-width': `${panelStore.rightPanelWidth}px`,
-        '--app-bottom-panel-height': `${panelStore.bottomPanelHeight}px`,
+        '--app-bottom-panel-height': '0px',
       }"
     >
       <TopBar
@@ -36,9 +36,12 @@
         :nodes="projectStore.fileTree"
         :active-path="projectStore.activeFile?.path"
         :sidebar-visible="panelStore.sidebar"
+        :tasks="taskStore.tasks"
+        :active-task-id="taskStore.activeTaskId"
         @open="projectStore.openFile"
         @rename="handleFileRename"
         @delete="handleFileDelete"
+        @select-task="handleSelectTask"
         @toggle="panelStore.toggle('sidebar')"
       />
 
@@ -47,6 +50,7 @@
         :subtitle="editorSubtitle"
         :content="projectStore.editorContent"
         :active-file="projectStore.activeFile"
+        :active-task="taskStore.activeTask"
         @update:content="projectStore.setEditorContent"
         @save="handleSaveActiveFile"
       />
@@ -62,15 +66,7 @@
         @toggle="panelStore.toggle('rightPanel')"
       />
 
-      <BottomPanel
-        :tasks="taskStore.tasks"
-        :active-task="taskStore.activeTask"
-        :active-task-id="taskStore.activeTaskId"
-        :bottom-panel-visible="panelStore.bottomPanel"
-        @select="taskStore.activeTaskId = $event"
-        @open-file="openOutputFile"
-        @toggle="panelStore.toggle('bottomPanel')"
-      />
+
     </div>
 
     <PromptModal
@@ -95,7 +91,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import BottomPanel from "@/components/BottomPanel.vue";
 import EditorPane from "@/components/EditorPane.vue";
 import GlobalProgressBar from "@/components/GlobalProgressBar.vue";
 import PromptModal from "@/components/PromptModal.vue";
@@ -415,12 +410,18 @@ const localizePath = (path: string) => {
     .join("/");
 };
 
-const editorTitle = computed(() =>
-  projectStore.activeFile ? projectStore.activeFile.name : "请选择文件"
-);
+const editorTitle = computed(() => {
+  if (projectStore.activeFile?.kind === "task-log") {
+    return taskStore.activeTask ? `任务日志 · ${taskStore.activeTask.label}` : "任务日志";
+  }
+  return projectStore.activeFile ? projectStore.activeFile.name : "请选择文件";
+});
 const editorSubtitle = computed(() => {
   if (!projectStore.activeFile) {
     return "打开项目文件进行编辑";
+  }
+  if (projectStore.activeFile.kind === "task-log") {
+    return "在编辑区查看任务执行日志";
   }
   const name = projectStore.activeFile.name;
   const path = localizePath(projectStore.activeFile.path);
@@ -459,6 +460,15 @@ const openOutputFile = async (fileKey: string) => {
     return;
   }
   await projectStore.openFile(target);
+};
+
+const handleSelectTask = async (taskId: string) => {
+  taskStore.activeTaskId = taskId;
+  await projectStore.openFile({
+    path: "task-log",
+    name: "任务日志",
+    kind: "task-log",
+  });
 };
 
 const parseErrorMessage = (error: unknown, fallback: string): string => {
@@ -544,7 +554,7 @@ const normalizeActiveFile = (value?: ProjectState["activeFile"]): ActiveFile | n
     return null;
   }
   const { path, kind, chapterNumber } = value;
-  if (typeof path !== "string" || (kind !== "file" && kind !== "chapter")) {
+  if (typeof path !== "string" || (kind !== "file" && kind !== "chapter" && kind !== "task-log")) {
     return null;
   }
   let resolvedChapterNumber = chapterNumber;
@@ -856,7 +866,7 @@ const loadProjectState = async () => {
         total: Math.max(0, state.batchTask.end - state.batchTask.start + 1),
       };
       batchRunning.value = true;
-      taskActionMap.set(state.batchTask.taskId, "batch");
+      taskActionMap.set(state.batchTask.taskId, { action: "batch" });
       parseBatchProgress(existingTask.logs);
     }
   }
@@ -1219,7 +1229,7 @@ const runAction = async (action: string) => {
             chapter_text: projectStore.editorContent,
             llm_config_name: resolveLlm(choose.consistency_llm),
           }),
-        "consistency"
+        { action: "consistency", chapterNumber: payloadBase.novel_number }
       );
       break;
     default:

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import fc from "fast-check";
 import { mount } from "@vue/test-utils";
-import { nextTick } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import BottomPanel from "./BottomPanel.vue";
 
@@ -10,38 +9,29 @@ describe("BottomPanel Properties", () => {
     setActivePinia(createPinia());
   });
 
-  it("auto scrolls to the newest log entry", async () => {
+  it("renders task chips for all tasks", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(fc.string({ minLength: 1, maxLength: 20 }), { minLength: 1, maxLength: 5 }),
-        async (logs) => {
-          const task = {
-            id: "task-1",
-            label: "测试任务",
-            status: "running",
-            logs,
+        async (labels) => {
+          const tasks = labels.map((label, idx) => ({
+            id: `task-${idx}`,
+            label,
+            status: "running" as const,
+            logs: [],
             outputFiles: [],
-          };
+          }));
+
           const wrapper = mount(BottomPanel, {
             props: {
-              tasks: [task],
-              activeTask: task,
-              activeTaskId: task.id,
+              tasks,
+              activeTask: tasks[0] ?? null,
+              activeTaskId: tasks[0]?.id ?? null,
             },
           });
 
-          const logStream = wrapper.find(".log-stream").element as HTMLDivElement;
-          Object.defineProperty(logStream, "scrollHeight", { value: 120, configurable: true });
-          logStream.scrollTop = 0;
-
-          const nextTask = { ...task, logs: [...logs, "新日志"] };
-          await wrapper.setProps({
-            tasks: [nextTask],
-            activeTask: nextTask,
-          });
-          await nextTick();
-
-          expect(logStream.scrollTop).toBe(120);
+          const chips = wrapper.findAll(".task-chip");
+          expect(chips.length).toBe(tasks.length);
           wrapper.unmount();
         }
       ),

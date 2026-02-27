@@ -6,15 +6,23 @@
         <div v-if="subtitle" class="muted">{{ subtitle }}</div>
       </div>
       <div class="editor-meta">
+        <div class="font-controls">
+          <button class="font-btn" type="button" @click="changeFontSize(-1)">A-</button>
+          <span class="font-size-label">{{ fontSize }}px</span>
+          <button class="font-btn" type="button" @click="changeFontSize(1)">A+</button>
+        </div>
         <span class="muted">{{ charCount }} 字</span>
-        <span :class="['save-status', saveStatusClass]">{{ saveStatusText }}</span>
+        <span v-if="saveStatusText" :class="['save-status', saveStatusClass]">{{ saveStatusText }}</span>
       </div>
     </div>
     <div class="editor-body">
       <textarea
         ref="textareaRef"
         class="editor-textarea"
-        :value="content"
+        :class="{ 'editor-textarea--readonly': isLogView }"
+        :value="displayContent"
+        :style="{ fontSize: `${fontSize}px` }"
+        :readonly="isLogView"
         @input="handleInput"
         @keydown="handleKeydown"
         spellcheck="false"
@@ -25,16 +33,24 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue";
-import { useAutoSave, type SaveStatus } from "@/composables/useAutoSave";
+import { useAutoSave } from "@/composables/useAutoSave";
 import { useWorkflowStore } from "@/stores/workflow";
 import type { ActiveFile } from "@/stores/project";
+import type { TaskItem } from "@/stores/task";
 
-const props = defineProps<{
-  title: string;
-  subtitle?: string;
-  content: string;
-  activeFile?: ActiveFile;
-}>();
+const props = withDefaults(
+  defineProps<{
+    title: string;
+    subtitle?: string;
+    content: string;
+    activeFile?: ActiveFile;
+    activeTask?: TaskItem | null;
+  }>(),
+  {
+    subtitle: "",
+    activeTask: null,
+  }
+);
 
 const emit = defineEmits<{
   (event: "update:content", value: string): void;
@@ -44,8 +60,8 @@ const emit = defineEmits<{
 const workflowStore = useWorkflowStore();
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const localContent = ref(props.content);
+const fontSize = ref(13);
 
-// Sync local content with props
 watch(
   () => props.content,
   (newContent) => {
@@ -53,6 +69,7 @@ watch(
     autoSave.resetWithContent(newContent);
   }
 );
+
 
 const { saveStatus, saveNow, hasUnsavedChanges, resetWithContent } = useAutoSave(
   localContent,
@@ -64,13 +81,41 @@ const { saveStatus, saveNow, hasUnsavedChanges, resetWithContent } = useAutoSave
   }
 );
 
-// Expose autoSave for external use
 const autoSave = { saveStatus, saveNow, hasUnsavedChanges, resetWithContent };
 
-const charCount = computed(() => props.content.length);
+const isLogView = computed(() => props.activeFile?.kind === "task-log");
 
-// 检查当前打开的是否是章节文件，以及需要重新定稿的状态
+const activeLogContent = computed(() => {
+  if (!props.activeTask) {
+    return "未选择任务。";
+  }
+  const chunks: string[] = [];
+  if (props.activeTask.error) {
+    chunks.push(`[错误] ${props.activeTask.error}`);
+  }
+  if (props.activeTask.logs.length) {
+    chunks.push(...props.activeTask.logs);
+  }
+  if (chunks.length === 0) {
+    chunks.push("暂无日志输出。");
+  }
+  return chunks.join("\n");
+});
+
+const displayContent = computed(() =>
+  isLogView.value ? activeLogContent.value : props.content
+);
+
+const charCount = computed(() => displayContent.value.length);
+
 const finalizeStatus = computed(() => {
+  if (isLogView.value) {
+    if (!props.activeTask) {
+      return "空闲";
+    }
+    return `${props.activeTask.label} · ${statusLabel(props.activeTask.status)}`;
+  }
+
   if (props.activeFile?.kind === "chapter" && typeof props.activeFile.chapterNumber === "number") {
     const chapter = props.activeFile.chapterNumber;
     const state = workflowStore.getChapterStatus(chapter);
@@ -92,12 +137,10 @@ const finalizeStatus = computed(() => {
 });
 
 const saveStatusText = computed(() => {
-  // 优先显示定稿状态（如果是章节文件）
   if (finalizeStatus.value) {
     return finalizeStatus.value;
   }
 
-  // 否则显示保存状态
   switch (saveStatus.value) {
     case "saving":
       return "保存中...";
@@ -111,7 +154,19 @@ const saveStatusText = computed(() => {
 });
 
 const saveStatusClass = computed(() => {
-  // 优先显示定稿状态（如果是章节文件）
+  if (isLogView.value) {
+    if (!props.activeTask) {
+      return "status-saved";
+    }
+    if (props.activeTask.status === "failed") {
+      return "status-unsaved";
+    }
+    if (props.activeTask.status === "running" || props.activeTask.status === "pending") {
+      return "status-saving";
+    }
+    return "status-finalized";
+  }
+
   if (finalizeStatus.value) {
     if (finalizeStatus.value === "待重新定稿") {
       return "status-needs-refinalize";
@@ -122,7 +177,6 @@ const saveStatusClass = computed(() => {
     return "status-finalized";
   }
 
-  // 否则显示保存状态
   switch (saveStatus.value) {
     case "saving":
       return "status-saving";
@@ -135,33 +189,47 @@ const saveStatusClass = computed(() => {
   }
 });
 
+const changeFontSize = (delta: number) => {
+  const nextSize = Math.min(24, Math.max(11, fontSize.value + delta));
+  fontSize.value = nextSize;
+};
+
 const handleInput = (event: Event) => {
+  if (isLogView.value) {
+    return;
+  }
   const target = event.target as HTMLTextAreaElement;
   localContent.value = target.value;
   emit("update:content", target.value);
 };
 
-const handleManualSave = async () => {
-  await saveNow();
-};
-
 const handleKeydown = async (event: KeyboardEvent) => {
-  // Ctrl+S or Cmd+S for immediate save
   if ((event.ctrlKey || event.metaKey) && event.key === "s") {
     event.preventDefault();
-    await saveNow();
+    if (!isLogView.value) {
+      await saveNow();
+    }
   }
 };
 
-// Warn user before leaving with unsaved changes
 const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-  if (hasUnsavedChanges.value) {
+  if (!isLogView.value && hasUnsavedChanges.value) {
     event.preventDefault();
-    // Modern browsers require returnValue to be set
     event.returnValue = "您有未保存的更改，确定要离开吗？";
     return event.returnValue;
   }
 };
+
+const statusLabel = (status: string) => {
+  const map: Record<string, string> = {
+    pending: "等待中",
+    running: "进行中",
+    success: "已完成",
+    failed: "已失败",
+  };
+  return map[status] ?? "未知状态";
+};
+
 
 onMounted(() => {
   window.addEventListener("beforeunload", handleBeforeUnload);
@@ -184,12 +252,38 @@ onBeforeUnmount(() => {
 .editor-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+}
+
+
+.font-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.font-btn {
+  border: 1px solid rgba(125, 186, 233, 0.35);
+  border-radius: 6px;
+  background: rgba(47, 155, 255, 0.12);
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.font-size-label {
+  min-width: 40px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .editor-body {
   flex: 1;
   padding: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .editor-textarea {
@@ -201,10 +295,15 @@ onBeforeUnmount(() => {
   color: var(--text);
   padding: 14px;
   font-family: var(--font-mono);
-  font-size: 13px;
   line-height: 1.6;
   outline: none;
 }
+
+.editor-textarea--readonly {
+  border-color: rgba(125, 186, 233, 0.22);
+  background: rgba(7, 18, 30, 0.78);
+}
+
 
 .save-status {
   font-size: 12px;
