@@ -76,7 +76,18 @@
               <textarea class="textarea-field" rows="2" :value="form.userGuidance" @input="update('userGuidance', $event)" placeholder="例：主角性格要沉稳，不要后宫"></textarea>
             </label>
             <div class="action-row action-row--single">
-              <button class="btn btn-outline" @click="$emit('run', 'architecture')">生成架构</button>
+              <button
+                class="btn btn-outline"
+                :class="{ 'btn--busy': isBusy('architecture') }"
+                :disabled="isBusy('architecture')"
+                :aria-busy="isBusy('architecture')"
+                @click="$emit('run', 'architecture')"
+              >
+                <span class="btn-label">
+                  <span v-if="isBusy('architecture')" class="btn-spinner" aria-hidden="true"></span>
+                  {{ isBusy("architecture") ? "架构生成中..." : "生成架构" }}
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -100,7 +111,19 @@
               <textarea class="textarea-field" rows="2" :value="form.userGuidance" @input="update('userGuidance', $event)" placeholder="对章节安排的额外要求"></textarea>
             </label>
             <div class="action-row action-row--single">
-              <button class="btn btn-outline" :disabled="buttonStates.blueprintDisabled" @click="$emit('run', 'blueprint')">生成蓝图</button>
+              <button
+                class="btn btn-outline"
+                :class="{ 'btn--busy': isBusy('blueprint') }"
+                :disabled="buttonStates.blueprintDisabled || isBusy('blueprint')"
+                :title="isBusy('blueprint') ? '任务执行中，请稍候' : ''"
+                :aria-busy="isBusy('blueprint')"
+                @click="$emit('run', 'blueprint')"
+              >
+                <span class="btn-label">
+                  <span v-if="isBusy('blueprint')" class="btn-spinner" aria-hidden="true"></span>
+                  {{ isBusy("blueprint") ? "蓝图生成中..." : "生成蓝图" }}
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -124,21 +147,46 @@
               </div>
             </label>
 
-            <button class="btn btn-ghost btn-preview-prompt" @click="$emit('run', 'preview-prompt')">编辑提示词</button>
+            <button
+              class="btn btn-ghost btn-preview-prompt"
+              :class="{ 'btn--busy': isBusy('preview-prompt') }"
+              :disabled="isBusy('preview-prompt')"
+              :aria-busy="isBusy('preview-prompt')"
+              @click="$emit('run', 'preview-prompt')"
+            >
+              <span class="btn-label">
+                <span v-if="isBusy('preview-prompt')" class="btn-spinner" aria-hidden="true"></span>
+                {{ isBusy("preview-prompt") ? "提示词生成中..." : "编辑提示词" }}
+              </span>
+            </button>
 
             <div class="action-row action-row--split">
               <button
                 class="btn btn-outline"
-                :disabled="buttonStates.draftDisabled"
-                :title="buttonStates.draftDisabledReason || ''"
+                :class="{ 'btn--busy': isBusy('draft') }"
+                :disabled="buttonStates.draftDisabled || isBusy('draft')"
+                :title="isBusy('draft') ? '任务执行中，请稍候' : (buttonStates.draftDisabledReason || '')"
+                :aria-busy="isBusy('draft')"
                 @click="$emit('run', 'draft')"
-              >生成草稿</button>
+              >
+                <span class="btn-label">
+                  <span v-if="isBusy('draft')" class="btn-spinner" aria-hidden="true"></span>
+                  {{ isBusy("draft") ? "草稿生成中..." : "生成草稿" }}
+                </span>
+              </button>
               <button
                 class="btn btn-outline"
-                :disabled="buttonStates.finalizeDisabled"
-                :title="buttonStates.finalizeDisabledReason || ''"
+                :class="{ 'btn--busy': isBusy('finalize') }"
+                :disabled="buttonStates.finalizeDisabled || isBusy('finalize')"
+                :title="isBusy('finalize') ? '任务执行中，请稍候' : (buttonStates.finalizeDisabledReason || '')"
+                :aria-busy="isBusy('finalize')"
                 @click="$emit('run', 'finalize')"
-              >定稿</button>
+              >
+                <span class="btn-label">
+                  <span v-if="isBusy('finalize')" class="btn-spinner" aria-hidden="true"></span>
+                  {{ isBusy("finalize") ? "定稿处理中..." : "定稿" }}
+                </span>
+              </button>
             </div>
 
             <div class="batch-range-row">
@@ -152,10 +200,21 @@
             <div class="action-row action-row--single">
               <button
                 class="btn btn-ghost"
-                :disabled="workflowStore.hasAnyPendingDraft"
-                :title="workflowStore.hasAnyPendingDraft ? '请先完成定稿' : ''"
+                :class="{ 'btn--busy': isBusy('batch') }"
+                :disabled="workflowStore.hasAnyPendingDraft || isBusy('batch')"
+                :title="
+                  workflowStore.hasAnyPendingDraft
+                    ? '请先完成定稿'
+                    : (isBusy('batch') ? '任务执行中，请稍候' : '')
+                "
+                :aria-busy="isBusy('batch')"
                 @click="$emit('run', 'batch')"
-              >批量生成</button>
+              >
+                <span class="btn-label">
+                  <span v-if="isBusy('batch')" class="btn-spinner" aria-hidden="true"></span>
+                  {{ isBusy("batch") ? "批量任务处理中..." : "批量生成" }}
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -190,6 +249,7 @@ import HelpTooltip from "./HelpTooltip.vue";
 
 const props = defineProps<{
   form: WorkbenchForm;
+  actionBusyMap?: Partial<Record<WorkbenchAction, boolean>>;
   rightPanelVisible?: boolean;
 }>();
 
@@ -237,6 +297,7 @@ const toolsOpen = ref(false);
 const currentStepForIndicator = computed(() => activeStep.value ?? workflowStore.currentStep);
 
 const buttonStates = computed(() => workflowStore.buttonStates);
+const isBusy = (action: WorkbenchAction) => Boolean(props.actionBusyMap?.[action]);
 
 const toggleStep = (step: WorkflowStep) => {
   activeStep.value = activeStep.value === step ? null : step;
@@ -569,6 +630,34 @@ const handleFile = (event: Event) => {
   width: 100%;
   line-height: 1.3;
   white-space: normal;
+}
+
+.btn-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.btn--busy {
+  position: relative;
+}
+
+.btn-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(226, 242, 255, 0.35);
+  border-top-color: rgba(226, 242, 255, 0.95);
+  border-radius: 50%;
+  animation: btn-spin 0.8s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .input-field,

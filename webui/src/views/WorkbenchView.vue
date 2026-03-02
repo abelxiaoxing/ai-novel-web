@@ -57,6 +57,7 @@
 
       <RightPanel
         :form="form"
+        :action-busy-map="actionBusyMap"
         :right-panel-visible="panelStore.rightPanel"
         @update:form="handleFormUpdate"
         @run="(action: WorkbenchAction) => runAction(action)"
@@ -1125,6 +1126,7 @@ const {
   getPendingPromptTaskId,
   clearPendingPromptTask,
   isPreFinalizeSessionValid,
+  isActionBusy,
 } = useWorkbenchActions({
   form,
   configStore,
@@ -1143,6 +1145,23 @@ const {
   getBatchDefaults: () => batchDefaults.value,
   onQueueSaveState: queueSaveState,
   onTaskHandled: handleTerminalTask,
+});
+
+const actionBusyMap = computed(() => {
+  const parsedChapter = Number(form.chapterNumber);
+  const chapter =
+    Number.isInteger(parsedChapter) && parsedChapter > 0
+      ? parsedChapter
+      : workflowStore.currentChapter;
+  return {
+    architecture: isActionBusy("architecture"),
+    blueprint: isActionBusy("blueprint"),
+    "preview-prompt": isActionBusy("preview-prompt", chapter),
+    batch: isActionBusy("batch"),
+    draft: isActionBusy("draft", chapter),
+    finalize: isActionBusy("finalize", chapter),
+    consistency: isActionBusy("consistency", chapter),
+  } as const;
 });
 
 const usePrompt = async (value: string) => {

@@ -48,6 +48,7 @@ type WaitForTaskTerminalOptions = {
 };
 
 type ValidationFailure = { field: NumericFieldKey; reason: string };
+type ActionLockKey = string;
 
 type UseWorkbenchActionsOptions = {
   form: WorkbenchForm;
@@ -94,9 +95,13 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
   } = options;
 
   const taskActionMap = new Map<string, TaskActionMeta>();
+  const taskLockKeyMap = new Map<string, ActionLockKey>();
+  const duplicateNoticeAt = new Map<ActionLockKey, number>();
   const processingTaskIds = new Set<string>();
   const taskHandleAttempts = new Map<string, number>();
   const preFinalizeSessionManager = createPreFinalizeSessionManager();
+  const actionLockCounts = ref<Record<string, number>>({});
+  const batchPrepareRunning = ref(false);
   const terminalProcessInFlight = ref(false);
   const terminalProcessNeedsRerun = ref(false);
 
@@ -110,6 +115,91 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     taskActionMap.delete(taskId);
   };
 
+  const resolveActionChapterNumber = () => {
+    const numeric = Number(form.chapterNumber);
+    if (Number.isInteger(numeric) && numeric > 0) {
+      return numeric;
+    }
+    return workflowStore.currentChapter;
+  };
+
+  const toActionLockKey = (action: WorkbenchAction, chapterNumber?: number): ActionLockKey => {
+    if (action === "draft" || action === "finalize" || action === "preview-prompt" || action === "consistency") {
+      const chapter =
+        typeof chapterNumber === "number" && Number.isInteger(chapterNumber) && chapterNumber > 0
+          ? chapterNumber
+          : resolveActionChapterNumber();
+      return `${action}:${chapter}`;
+    }
+    return action;
+  };
+
+  const resolveActionLockKey = (meta: TaskActionMeta): ActionLockKey =>
+    toActionLockKey(meta.action, meta.chapterNumber);
+
+  const getActionLockCount = (key: ActionLockKey) => actionLockCounts.value[key] ?? 0;
+
+  const updateActionLock = (key: ActionLockKey, delta: number) => {
+    const current = getActionLockCount(key);
+    const next = Math.max(0, current + delta);
+    const snapshot = { ...actionLockCounts.value };
+    if (next <= 0) {
+      delete snapshot[key];
+    } else {
+      snapshot[key] = next;
+    }
+    actionLockCounts.value = snapshot;
+  };
+
+  const lockAction = (key: ActionLockKey) => {
+    updateActionLock(key, 1);
+  };
+
+  const unlockAction = (key: ActionLockKey) => {
+    updateActionLock(key, -1);
+  };
+
+  const releaseTaskActionLock = (taskId: string) => {
+    const key = taskLockKeyMap.get(taskId);
+    if (!key) {
+      return;
+    }
+    taskLockKeyMap.delete(taskId);
+    unlockAction(key);
+  };
+
+  const pruneStaleActionLocks = () => {
+    for (const [taskId, key] of taskLockKeyMap.entries()) {
+      const task = taskStore.tasks.find((item) => item.id === taskId);
+      if (!task || task.handled) {
+        taskLockKeyMap.delete(taskId);
+        unlockAction(key);
+      }
+    }
+  };
+
+  const isActionLockBusy = (key: ActionLockKey) => {
+    pruneStaleActionLocks();
+    return getActionLockCount(key) > 0;
+  };
+
+  const reportBusyAction = (label: string, key: ActionLockKey) => {
+    const now = Date.now();
+    const lastShownAt = duplicateNoticeAt.get(key) ?? 0;
+    if (now - lastShownAt < 1200) {
+      return;
+    }
+    duplicateNoticeAt.set(key, now);
+    toastStore.info(`${label}正在执行，请勿重复点击`);
+  };
+
+  const isActionBusy = (action: WorkbenchAction, chapterNumber?: number) => {
+    if (action === "batch" && batchPrepareRunning.value) {
+      return true;
+    }
+    return isActionLockBusy(toActionLockKey(action, chapterNumber));
+  };
+
   const { processTerminalTasks } = createTerminalTaskProcessor({
     taskStore,
     toastStore,
@@ -119,6 +209,7 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     terminalProcessNeedsRerun,
     getTaskActionMeta,
     deleteTaskActionMeta,
+    onTaskSettled: releaseTaskActionLock,
     onTaskHandled,
   });
 
@@ -196,15 +287,29 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     apiCall: () => Promise<TaskResponse>,
     actionMeta?: TaskActionMeta
   ) => {
+    const lockKey = actionMeta ? resolveActionLockKey(actionMeta) : null;
+    if (lockKey && isActionLockBusy(lockKey)) {
+      reportBusyAction(label, lockKey);
+      return null;
+    }
+    if (lockKey) {
+      lockAction(lockKey);
+    }
     try {
       const payload = await apiCall();
       taskStore.registerTask(payload.task_id, label);
       if (actionMeta) {
         setTaskActionMeta(payload.task_id, actionMeta);
       }
+      if (lockKey) {
+        taskLockKeyMap.set(payload.task_id, lockKey);
+      }
       return payload.task_id;
     } catch (error) {
       projectStore.error = error instanceof Error ? error.message : "任务执行失败";
+      if (lockKey) {
+        unlockAction(lockKey);
+      }
       return null;
     }
   };
@@ -441,14 +546,6 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     });
   };
 
-  const resolveActionChapterNumber = () => {
-    const numeric = Number(form.chapterNumber);
-    if (Number.isInteger(numeric) && numeric > 0) {
-      return numeric;
-    }
-    return workflowStore.currentChapter;
-  };
-
   const runAction = async (action: WorkbenchAction) => {
     const projectId = projectStore.currentProject?.id;
     if (!projectId) {
@@ -507,16 +604,25 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
         return;
       }
       case "batch": {
-        const isValid = await withValidNumbers(async () => {
-          numberOfChapters();
-          chapterNumber();
-          wordNumber();
-          return true;
-        });
-        if (!isValid) {
+        if (isActionBusy("batch")) {
+          reportBusyAction("批量生成", toActionLockKey("batch"));
           return;
         }
-        await startBatchDirect();
+        batchPrepareRunning.value = true;
+        try {
+          const isValid = await withValidNumbers(async () => {
+            numberOfChapters();
+            chapterNumber();
+            wordNumber();
+            return true;
+          });
+          if (!isValid) {
+            return;
+          }
+          await startBatchDirect();
+        } finally {
+          batchPrepareRunning.value = false;
+        }
         return;
       }
       case "draft": {
@@ -611,5 +717,6 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     getPendingPromptTaskId,
     clearPendingPromptTask,
     isPreFinalizeSessionValid,
+    isActionBusy,
   };
 }

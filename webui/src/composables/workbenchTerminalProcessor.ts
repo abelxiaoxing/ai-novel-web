@@ -12,6 +12,7 @@ type ProcessTerminalTasksOptions = {
   terminalProcessNeedsRerun: Ref<boolean>;
   getTaskActionMeta: (taskId: string) => TaskActionMeta | undefined;
   deleteTaskActionMeta: (taskId: string) => void;
+  onTaskSettled?: (taskId: string) => void;
   onTaskHandled: (payload: {
     task: TerminalTask;
     actionMeta?: TaskActionMeta;
@@ -28,6 +29,7 @@ export function createTerminalTaskProcessor(options: ProcessTerminalTasksOptions
     terminalProcessNeedsRerun,
     getTaskActionMeta,
     deleteTaskActionMeta,
+    onTaskSettled,
     onTaskHandled,
   } = options;
 
@@ -54,11 +56,13 @@ export function createTerminalTaskProcessor(options: ProcessTerminalTasksOptions
       if (actionMeta?.action) {
         deleteTaskActionMeta(task.id);
       }
+      onTaskSettled?.(task.id);
     } catch (error) {
       if (nextAttempt >= 3) {
         taskStore.updateTask(task.id, { handled: true });
         taskHandleAttempts.delete(task.id);
         deleteTaskActionMeta(task.id);
+        onTaskSettled?.(task.id);
         reportTerminalProcessError(task.label, error);
         toastStore.error(`任务终态处理失败已达上限：${task.label}`);
         return;

@@ -129,6 +129,7 @@ describe("WorkbenchView Properties", () => {
 
   it("uses selected model configs when generating drafts", async () => {
     const { wrapper } = mountWorkbench();
+    const taskStore = useTaskStore();
     await waitForWorkbenchReady();
 
     await fc.assert(
@@ -137,6 +138,7 @@ describe("WorkbenchView Properties", () => {
         fc.string({ minLength: 1, maxLength: 8 }),
         async (llmName, embedName) => {
           mockGenerateDraft.mockClear();
+          taskStore.clearAll();
           (wrapper.vm as any).form.llmConfigName = llmName;
           (wrapper.vm as any).form.embeddingConfigName = embedName;
           await nextTick();
@@ -319,6 +321,7 @@ describe("WorkbenchView Properties", () => {
 
   it("keeps core request contract for architecture and blueprint actions", async () => {
     const { wrapper, configStore } = mountWorkbench();
+    const taskStore = useTaskStore();
     await waitForWorkbenchReady();
 
     await fc.assert(
@@ -332,6 +335,7 @@ describe("WorkbenchView Properties", () => {
         async (topic, genre, chapters, words, architectureLlm, blueprintLlm) => {
           mockGenerateArchitecture.mockClear();
           mockGenerateBlueprint.mockClear();
+          taskStore.clearAll();
 
           (wrapper.vm as any).form.topic = topic;
           (wrapper.vm as any).form.genre = genre;
@@ -369,6 +373,19 @@ describe("WorkbenchView Properties", () => {
       ),
       { numRuns: 10 }
     );
+
+    wrapper.unmount();
+  });
+
+  it("prevents duplicate draft submission while previous draft task is still running", async () => {
+    const { wrapper } = mountWorkbench();
+    await waitForWorkbenchReady();
+
+    mockGenerateDraft.mockClear();
+    await (wrapper.vm as any).runAction("draft");
+    await (wrapper.vm as any).runAction("draft");
+
+    expect(mockGenerateDraft).toHaveBeenCalledTimes(1);
 
     wrapper.unmount();
   });
