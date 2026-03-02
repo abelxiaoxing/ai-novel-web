@@ -20,7 +20,7 @@
     </div>
 
     <!-- 进度条 -->
-    <div class="progress-section" v-if="project.num_chapters">
+    <div class="progress-section" v-if="totalChapters > 0">
       <div class="progress-header">
         <span class="progress-label">创作进度</span>
         <span class="progress-count">{{ progressPercentage }}%</span>
@@ -30,12 +30,12 @@
       </div>
       <div class="progress-stats">
         <span class="stat-item">
-          <span class="stat-value">{{ finalizedChapters }}</span>
+          <span class="stat-value">{{ completedChapters }}</span>
           <span class="stat-label">已完成</span>
         </span>
         <span class="stat-divider"></span>
         <span class="stat-item">
-          <span class="stat-value">{{ project.num_chapters }}</span>
+          <span class="stat-value">{{ totalChapters }}</span>
           <span class="stat-label">总章节</span>
         </span>
         <span class="stat-divider"></span>
@@ -83,27 +83,40 @@ import type { Project } from "@/api/types";
 const props = defineProps<{ project: Project }>();
 defineEmits(["open", "delete"]);
 
-// 模拟已定稿章节数（实际项目中可能从其他地方获取）
-function getFinalizedChapters(): number {
-  // 这里可以根据项目状态计算，目前返回0作为占位
-  return 0;
+function toSafeNumber(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Math.max(0, value);
 }
 
-const finalizedChapters = computed(() => getFinalizedChapters());
+const totalChapters = computed(() => {
+  const target = Math.trunc(toSafeNumber(props.project.num_chapters));
+  if (target > 0) return target;
+  return Math.trunc(toSafeNumber(props.project.chapter_count));
+});
 
-// 计算进度百分比
+const completedChapters = computed(() => {
+  const rawCompleted = props.project.completed_chapters;
+  if (typeof rawCompleted === "number" && Number.isFinite(rawCompleted)) {
+    const completed = Math.trunc(Math.max(0, rawCompleted));
+    return Math.min(completed, totalChapters.value || completed);
+  }
+  const generated = Math.trunc(toSafeNumber(props.project.chapter_count));
+  return Math.min(generated, totalChapters.value || generated);
+});
+
 const progressPercentage = computed(() => {
-  if (!props.project.num_chapters) return 0;
-  return Math.round((finalizedChapters.value / props.project.num_chapters) * 100);
+  if (!totalChapters.value) return 0;
+  const progress = (completedChapters.value / totalChapters.value) * 100;
+  return Math.max(0, Math.min(100, Math.round(progress)));
 });
 
-// 计算万字数
+const writtenWords = computed(() => Math.trunc(toSafeNumber(props.project.written_words)));
+
 const wordCount = computed(() => {
-  if (!props.project.word_number) return "0";
-  return (props.project.word_number / 10000).toFixed(1);
+  if (!writtenWords.value) return "0";
+  return (writtenWords.value / 10000).toFixed(1);
 });
 
-// 格式化更新时间
 const formattedUpdatedAt = computed(() => {
   if (!props.project.updated_at) return "暂无记录";
   const date = new Date(props.project.updated_at);

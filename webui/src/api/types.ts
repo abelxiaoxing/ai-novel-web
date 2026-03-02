@@ -7,6 +7,9 @@ export interface Project {
   genre?: string;
   num_chapters?: number;
   word_number?: number;
+  chapter_count?: number;
+  completed_chapters?: number;
+  written_words?: number;
   created_at?: string;
   updated_at?: string;
 }
