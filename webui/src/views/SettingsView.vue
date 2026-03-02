@@ -26,7 +26,10 @@
         <button class="btn btn-ghost" @click="openProxyManager">配置</button>
       </div>
     </section>
-    <button class="btn btn-outline" @click="$router.push('/')">返回项目列表</button>
+    <div class="settings-actions">
+      <button class="btn btn-outline" @click="$router.push('/')">返回项目列表</button>
+      <button class="btn btn-outline" @click="logoutAuth">退出认证</button>
+    </div>
 
     <ModalShell
       v-if="chooseModalOpen"
@@ -189,8 +192,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import ModalShell from "@/components/ModalShell.vue";
 import { useConfigStore } from "@/stores/config";
+import { clearAccessKey } from "@/auth/accessKey";
 import {
   createEmbeddingConfig,
   createLlmConfig,
@@ -211,6 +216,7 @@ import {
 
 type ConfigType = "llm" | "embedding";
 
+const router = useRouter();
 const configStore = useConfigStore();
 const configModalOpen = ref(false);
 const proxyModalOpen = ref(false);
@@ -626,6 +632,11 @@ const saveProxySettings = async () => {
   }
 };
 
+const logoutAuth = async () => {
+  clearAccessKey();
+  await router.replace("/auth");
+};
+
 onMounted(() => {
   configStore.fetchConfigs();
 });
@@ -659,6 +670,11 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 12px;
 }
 
 .section-card {

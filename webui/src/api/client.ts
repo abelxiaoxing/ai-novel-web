@@ -1,3 +1,9 @@
+import {
+  ACCESS_KEY_HEADER_NAME,
+  clearAccessKey,
+  getAccessKey,
+} from "@/auth/accessKey";
+
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -15,6 +21,16 @@ export function buildUrl(path: string) {
   return `${API_BASE}${path}`;
 }
 
+export function getAuthHeaders(): Record<string, string> {
+  const key = getAccessKey();
+  if (!key) {
+    return {};
+  }
+  return {
+    [ACCESS_KEY_HEADER_NAME]: key,
+  };
+}
+
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const isFormData =
     typeof FormData !== "undefined" && options.body instanceof FormData;
@@ -22,6 +38,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   if (!isFormData) {
     defaultHeaders["Content-Type"] = "application/json";
   }
+  Object.assign(defaultHeaders, getAuthHeaders());
 
   const response = await fetch(buildUrl(path), {
     ...options,
@@ -32,6 +49,12 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearAccessKey();
+      if (typeof window !== "undefined" && window.location.pathname !== "/auth") {
+        window.location.href = "/auth";
+      }
+    }
     const message = await response.text();
     throw new ApiError(message || "请求失败", response.status);
   }

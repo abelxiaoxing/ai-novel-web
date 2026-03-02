@@ -1,4 +1,5 @@
-import { ApiError, apiFetch, buildUrl, encodePath } from "@/api/client";
+import { ApiError, apiFetch, buildUrl, encodePath, getAuthHeaders } from "@/api/client";
+import { clearAccessKey } from "@/auth/accessKey";
 import type {
   ChapterListResponse,
   FileContentResponse,
@@ -135,8 +136,16 @@ export async function downloadProjectExport(
   projectId: string,
   format: ProjectExportFormat
 ): Promise<{ filename: string; blob: Blob }> {
-  const response = await fetch(buildUrl(projectPath(projectId, `/export/${format}`)));
+  const response = await fetch(buildUrl(projectPath(projectId, `/export/${format}`)), {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
+    if (response.status === 401) {
+      clearAccessKey();
+      if (typeof window !== "undefined" && window.location.pathname !== "/auth") {
+        window.location.href = "/auth";
+      }
+    }
     const message = await response.text();
     throw new ApiError(message || "导出失败", response.status);
   }

@@ -1,4 +1,5 @@
 import { apiFetch, buildUrl } from "@/api/client";
+import { appendAccessKeyQuery } from "@/auth/accessKey";
 import type { TaskResponse, TaskStatusResponse } from "@/api/types";
 
 export type ChapterSharedPayload = {
@@ -104,7 +105,7 @@ export async function cancelTask(taskId: string) {
 }
 
 export function getTaskStreamUrl(taskId: string) {
-  return buildUrl(`/api/tasks/${taskId}/stream`);
+  return buildUrl(appendAccessKeyQuery(`/api/tasks/${taskId}/stream`));
 }
 
 export function getDraftStreamUrl(projectId: string, params: ChapterPayload) {
@@ -118,7 +119,9 @@ export function getDraftStreamUrl(projectId: string, params: ChapterPayload) {
   if (params.user_guidance) searchParams.set("user_guidance", params.user_guidance);
   if (params.llm_config_name) searchParams.set("llm_config_name", params.llm_config_name);
   if (params.embedding_config_name) searchParams.set("embedding_config_name", params.embedding_config_name);
-  return buildUrl(`/api/projects/${projectId}/generate/draft/stream?${searchParams.toString()}`);
+  return buildUrl(
+    appendAccessKeyQuery(`/api/projects/${projectId}/generate/draft/stream?${searchParams.toString()}`)
+  );
 }
 
 export async function generateArchitecture(projectId: string, payload: ArchitecturePayload) {

@@ -6,6 +6,7 @@ uv.lock
 webui/dist
 webui/node_modules
 webui/.vite
+.env
 webui/.env
 webui/.env.local
 app.log

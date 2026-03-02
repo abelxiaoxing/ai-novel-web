@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from pathlib import Path
 from urllib.parse import quote
 from typing import Any, Dict, Optional
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.config_store import ConfigStore
@@ -150,6 +151,74 @@ project_store = ProjectStore()
 config_store = ConfigStore()
 task_manager = TaskManager()
 CHAPTER_GENERATION_MUTEX_GROUP = "chapter_generation"
+ACCESS_KEY_HEADER_NAME = "x-access-key"
+ACCESS_KEY_QUERY_NAME = "access_key"
+
+
+def _load_access_key_from_env_file() -> str:
+    env_file = os.environ.get("AINOVEL_DOTENV_FILE")
+    candidates = [Path(env_file)] if env_file else [Path(__file__).resolve().parents[1] / ".env"]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for raw_line in handle:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if line.startswith("export "):
+                        line = line[len("export ") :].strip()
+                    key, sep, value = line.partition("=")
+                    if not sep or key.strip() != "AINOVEL_ACCESS_KEY":
+                        continue
+                    parsed = value.strip()
+                    if len(parsed) >= 2 and parsed[0] == parsed[-1] and parsed[0] in {"'", '"'}:
+                        parsed = parsed[1:-1]
+                    parsed = parsed.strip()
+                    if parsed:
+                        os.environ["AINOVEL_ACCESS_KEY"] = parsed
+                        return parsed
+        except OSError:
+            continue
+    return ""
+
+
+def _resolve_access_key() -> str:
+    key = str(os.environ.get("AINOVEL_ACCESS_KEY", "")).strip()
+    if key:
+        return key
+    key = _load_access_key_from_env_file()
+    if key:
+        return key
+    raise RuntimeError("缺少 AINOVEL_ACCESS_KEY，请在环境变量或项目根目录 .env 中设置。")
+
+
+ACCESS_KEY_VALUE = _resolve_access_key()
+
+
+def _build_unauthorized_response(request: Request) -> JSONResponse:
+    headers: Dict[str, str] = {}
+    origin = str(request.headers.get("origin", "")).strip()
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Vary"] = "Origin"
+    return JSONResponse(status_code=401, content={"detail": "访问密钥无效。"}, headers=headers)
+
+
+@app.middleware("http")
+async def access_key_middleware(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        access_key = (
+            str(request.headers.get(ACCESS_KEY_HEADER_NAME) or "").strip()
+            or str(request.query_params.get(ACCESS_KEY_QUERY_NAME) or "").strip()
+        )
+        if access_key != ACCESS_KEY_VALUE:
+            return _build_unauthorized_response(request)
+    return await call_next(request)
 
 
 def _get_project_root(project_id: str) -> str:
