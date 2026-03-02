@@ -1,7 +1,6 @@
 export const WORKBENCH_ACTIONS = [
   "architecture",
   "blueprint",
-  "preview-prompt",
   "batch",
   "draft",
   "finalize",

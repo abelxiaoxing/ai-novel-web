@@ -147,19 +147,6 @@
               </div>
             </label>
 
-            <button
-              class="btn btn-ghost btn-preview-prompt"
-              :class="{ 'btn--busy': isBusy('preview-prompt') }"
-              :disabled="isBusy('preview-prompt')"
-              :aria-busy="isBusy('preview-prompt')"
-              @click="$emit('run', 'preview-prompt')"
-            >
-              <span class="btn-label">
-                <span v-if="isBusy('preview-prompt')" class="btn-spinner" aria-hidden="true"></span>
-                {{ isBusy("preview-prompt") ? "提示词生成中..." : "编辑提示词" }}
-              </span>
-            </button>
-
             <div class="action-row action-row--split">
               <button
                 class="btn btn-outline"
@@ -778,11 +765,6 @@ const handleFile = (event: Event) => {
   background: rgba(52, 127, 221, 0.64);
   border-color: rgba(205, 236, 255, 0.9);
   color: #ffffff;
-}
-
-.btn-preview-prompt {
-  width: 100%;
-  margin-top: 0;
 }
 
 .batch-range-row {

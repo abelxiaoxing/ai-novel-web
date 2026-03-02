@@ -6,7 +6,6 @@ describe("workbenchActionTypes", () => {
     expect(WORKBENCH_ACTIONS).toEqual([
       "architecture",
       "blueprint",
-      "preview-prompt",
       "batch",
       "draft",
       "finalize",

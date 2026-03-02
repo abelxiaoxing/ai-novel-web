@@ -75,13 +75,6 @@
 
     </div>
 
-    <PromptModal
-      v-if="promptModalOpen"
-      :content="promptText"
-      @close="promptModalOpen = false"
-      @confirm="usePrompt"
-    />
-
     <VectorstoreModal
       v-if="vectorstoreModalOpen && projectStore.currentProject"
       :project-id="projectStore.currentProject.id"
@@ -99,7 +92,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router";
 import EditorPane from "@/components/EditorPane.vue";
 import GlobalProgressBar from "@/components/GlobalProgressBar.vue";
-import PromptModal from "@/components/PromptModal.vue";
 import VectorstoreModal from "@/components/VectorstoreModal.vue";
 import RightPanel from "@/components/RightPanel.vue";
 import Sidebar from "@/components/Sidebar.vue";
@@ -135,10 +127,7 @@ const toastStore = useToastStore();
 const workflowStore = useWorkflowStore();
 const panelStore = usePanelStore();
 
-const promptModalOpen = ref(false);
-const promptText = ref("");
 const vectorstoreModalOpen = ref(false);
-const pendingPromptTask = ref<string | null>(null);
 const stepToastMap: Record<string, string> = {
   architecture: "架构已完成，下一步生成章节蓝图。",
   blueprint: "蓝图已完成，下一步生成章节草稿。",
@@ -1139,12 +1128,9 @@ const handleTerminalTask = async ({
 const {
   runTask,
   runAction,
-  usePrompt: runPromptWithCustomText,
   cancelBatch,
   processTerminalTasks,
   setTaskActionMeta,
-  getPendingPromptTaskId,
-  clearPendingPromptTask,
   isPreFinalizeSessionValid,
   isActionBusy,
   getRunningChapterGenerationTask,
@@ -1157,7 +1143,6 @@ const {
   taskStore,
   toastStore,
   workflowStore,
-  pendingPromptTask,
   batchRunning,
   batchCancelRequested,
   batchProgress,
@@ -1196,18 +1181,12 @@ const actionBusyMap = computed(() => {
   return {
     architecture: isActionBusy("architecture"),
     blueprint: isActionBusy("blueprint"),
-    "preview-prompt": isActionBusy("preview-prompt", chapter),
     batch: isActionBusy("batch"),
     draft: isActionBusy("draft", chapter),
     finalize: isActionBusy("finalize", chapter),
     consistency: isActionBusy("consistency", chapter),
   } as const;
 });
-
-const usePrompt = async (value: string) => {
-  promptModalOpen.value = false;
-  await runPromptWithCustomText(value);
-};
 
 const handleKnowledgeImport = async (file: File) => {
   const projectId = projectStore.currentProject?.id;
@@ -1317,41 +1296,6 @@ watch(
   () => taskStore.tasks.map((task) => `${task.id}:${task.status}:${task.handled === true ? 1 : 0}`),
   async () => {
     await processTerminalTasks();
-  }
-);
-
-watch(
-  () => {
-    const pendingPromptId = getPendingPromptTaskId();
-    if (!pendingPromptId) {
-      return null;
-    }
-    const task = taskStore.tasks.find((item) => item.id === pendingPromptId);
-    if (!task) {
-      return { status: "missing", prompt: null as string | null };
-    }
-    const prompt = task.result?.prompt_text;
-    return {
-      status: task.status,
-      prompt: typeof prompt === "string" ? prompt : null,
-    };
-  },
-  (state) => {
-    if (!state) {
-      return;
-    }
-    if (state.status === "failed" || state.status === "cancelled" || state.status === "missing") {
-      clearPendingPromptTask();
-      return;
-    }
-    if (state.status !== "success") {
-      return;
-    }
-    if (state.prompt) {
-      promptText.value = state.prompt;
-      promptModalOpen.value = true;
-    }
-    clearPendingPromptTask();
   }
 );
 

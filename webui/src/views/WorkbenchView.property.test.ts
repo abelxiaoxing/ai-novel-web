@@ -9,7 +9,6 @@ import { useConfigStore } from "@/stores/config";
 import { useTaskStore } from "@/stores/task";
 import { useToastStore } from "@/stores/toast";
 import { useWorkflowStore } from "@/stores/workflow";
-import PromptModal from "@/components/PromptModal.vue";
 import { toPayloadNumber } from "@/composables/workbenchPayloadHelpers";
 
 vi.mock("@/composables/workbenchPayloadHelpers", async (importOriginal) => {
@@ -25,7 +24,6 @@ const mockedToPayloadNumber = vi.mocked(toPayloadNumber);
 const mockGenerateArchitecture = vi.fn().mockResolvedValue({ task_id: "task-a" });
 const mockGenerateBlueprint = vi.fn().mockResolvedValue({ task_id: "task-b" });
 const mockGenerateDraft = vi.fn().mockResolvedValue({ task_id: "task-draft" });
-const mockBuildPrompt = vi.fn().mockResolvedValue({ task_id: "task-prompt" });
 const mockGenerateBatch = vi.fn().mockResolvedValue({ task_id: "task-batch" });
 const mockFinalizeChapter = vi.fn().mockResolvedValue({ task_id: "task-f" });
 const mockGetTaskStatus = vi.fn().mockResolvedValue({ status: "running", result: null, error: null, output_files: [] });
@@ -42,7 +40,6 @@ vi.mock("@/api/tasks", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/tasks")>();
   return {
     ...actual,
-    buildPrompt: (...args: unknown[]) => mockBuildPrompt(...args),
     cancelTask: (...args: unknown[]) => mockCancelTask(...args),
     consistencyCheck: vi.fn().mockResolvedValue({ task_id: "task-c" }),
     finalizeChapter: (...args: unknown[]) => mockFinalizeChapter(...args),
@@ -117,7 +114,6 @@ describe("WorkbenchView Properties", () => {
     mockGenerateArchitecture.mockClear();
     mockGenerateBlueprint.mockClear();
     mockGenerateDraft.mockClear();
-    mockBuildPrompt.mockClear();
     mockGenerateBatch.mockClear();
     mockFinalizeChapter.mockClear();
     mockGetTaskStatus.mockClear();
@@ -247,32 +243,6 @@ describe("WorkbenchView Properties", () => {
         }
       ),
       { numRuns: 8 }
-    );
-
-    wrapper.unmount();
-  });
-
-  it("opens the prompt modal only after preview prompt succeeds", async () => {
-    const { wrapper } = mountWorkbench();
-    const taskStore = useTaskStore();
-    await nextTick();
-
-    await fc.assert(
-      fc.asyncProperty(fc.string({ minLength: 1, maxLength: 20 }), async (promptText) => {
-        taskStore.clearAll();
-        (wrapper.vm as any).promptModalOpen = false;
-        await (wrapper.vm as any).runAction("draft");
-        await nextTick();
-        expect(wrapper.findComponent(PromptModal).exists()).toBe(false);
-
-        await (wrapper.vm as any).runAction("preview-prompt");
-        const taskId = taskStore.activeTaskId as string;
-        taskStore.updateTask(taskId, { status: "success", result: { prompt_text: promptText } });
-        await flushPromises();
-        await nextTick();
-        expect(wrapper.findComponent(PromptModal).exists()).toBe(true);
-      }),
-      { numRuns: 10 }
     );
 
     wrapper.unmount();

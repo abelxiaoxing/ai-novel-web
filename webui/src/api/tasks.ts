@@ -32,11 +32,7 @@ export type BlueprintPayload = {
   llm_config_name?: string;
 };
 
-export type BuildPromptPayload = ChapterPayload;
-
-export type DraftPayload = ChapterPayload & {
-  custom_prompt_text?: string;
-};
+export type DraftPayload = ChapterPayload;
 
 export type FinalizePayload = {
   novel_number: number;
@@ -133,13 +129,6 @@ export async function generateArchitecture(projectId: string, payload: Architect
 
 export async function generateBlueprint(projectId: string, payload: BlueprintPayload) {
   return apiFetch<TaskResponse>(`/api/projects/${projectId}/generate/blueprint`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function buildPrompt(projectId: string, payload: BuildPromptPayload) {
-  return apiFetch<TaskResponse>(`/api/projects/${projectId}/generate/build-prompt`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

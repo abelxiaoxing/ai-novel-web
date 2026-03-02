@@ -2,7 +2,6 @@ import { ref, type Ref } from "vue";
 import {
   buildChapterPayload,
   buildChapterSharedPayload,
-  buildPrompt,
   cancelTask,
   consistencyCheck,
   finalizeChapter,
@@ -11,9 +10,7 @@ import {
   generateBlueprint,
   generateDraft,
   type BatchPayload as ApiBatchPayload,
-  type BuildPromptPayload,
   type ConsistencyCheckPayload,
-  type DraftPayload,
   type FinalizePayload,
 } from "@/api/tasks";
 import type { TaskResponse } from "@/api/types";
@@ -66,7 +63,6 @@ type UseWorkbenchActionsOptions = {
   taskStore: ReturnType<typeof useTaskStore>;
   toastStore: ReturnType<typeof useToastStore>;
   workflowStore: ReturnType<typeof useWorkflowStore>;
-  pendingPromptTask: Ref<string | null>;
   batchRunning: Ref<boolean>;
   batchCancelRequested: Ref<boolean>;
   batchProgress: Ref<{ current: number; total: number }>;
@@ -90,7 +86,6 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     taskStore,
     toastStore,
     workflowStore,
-    pendingPromptTask,
     batchRunning,
     batchCancelRequested,
     batchProgress,
@@ -140,7 +135,7 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     if (isChapterGenerationAction(action)) {
       return CHAPTER_GENERATION_LOCK_KEY;
     }
-    if (action === "preview-prompt" || action === "consistency") {
+    if (action === "consistency") {
       const chapter =
         typeof chapterNumber === "number" && Number.isInteger(chapterNumber) && chapterNumber > 0
           ? chapterNumber
@@ -285,7 +280,7 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     embeddingConfigName: resolveEmbedding(),
   });
 
-  const buildDraftChapterPayload = (): BuildPromptPayload =>
+  const buildDraftChapterPayload = () =>
     buildChapterPayload({
       chapterNumber: chapterNumber(),
       ...buildChapterSharedInput(resolveLlm(configStore.chooseConfigs.prompt_draft_llm)),
@@ -649,21 +644,6 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
         );
         return;
       }
-      case "preview-prompt": {
-        const payloadBase = await withValidNumbers(async () => buildDraftChapterPayload());
-        if (!payloadBase) {
-          return;
-        }
-        const taskId = await runTask(
-          "预览提示词",
-          () => buildPrompt(projectId, payloadBase),
-          { action: "preview-prompt", chapterNumber: payloadBase.novel_number }
-        );
-        if (taskId) {
-          pendingPromptTask.value = taskId;
-        }
-        return;
-      }
       case "batch": {
         if (isActionBusy("batch")) {
           reportBusyAction("批量生成", toActionLockKey("batch"));
@@ -728,25 +708,6 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
         return;
       }
     }
-  };
-
-  const usePrompt = async (value: string) => {
-    const projectId = projectStore.currentProject?.id;
-    if (!projectId) {
-      return;
-    }
-    const payload = await withValidNumbers(async (): Promise<DraftPayload> => ({
-      ...buildDraftChapterPayload(),
-      custom_prompt_text: value,
-    }));
-    if (!payload) {
-      return;
-    }
-    await runTask(
-      "生成草稿",
-      () => generateDraft(projectId, payload),
-      { action: "draft", chapterNumber: payload.novel_number }
-    );
   };
 
   const getRunningChapterGenerationTask = (): RunningChapterGenerationTask | null => {
@@ -821,21 +782,12 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     await cancelCurrentChapterGeneration();
   };
 
-  const getPendingPromptTaskId = () => pendingPromptTask.value;
-
-  const clearPendingPromptTask = () => {
-    pendingPromptTask.value = null;
-  };
-
   return {
     runTask,
     runAction,
-    usePrompt,
     cancelBatch: cancelBatchAction,
     processTerminalTasks,
     setTaskActionMeta,
-    getPendingPromptTaskId,
-    clearPendingPromptTask,
     isPreFinalizeSessionValid,
     isActionBusy,
     getRunningChapterGenerationTask,

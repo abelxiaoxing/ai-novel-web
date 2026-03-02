@@ -16,7 +16,6 @@ vi.mock("@/api/tasks", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/tasks")>();
   return {
     ...actual,
-    buildPrompt: vi.fn().mockResolvedValue({ task_id: "task-prompt" }),
     cancelTask: vi.fn().mockResolvedValue(undefined),
     consistencyCheck: vi.fn().mockResolvedValue({ task_id: "task-c" }),
     finalizeChapter: vi.fn().mockResolvedValue({ task_id: "task-f" }),
@@ -82,7 +81,6 @@ describe("WorkbenchView task log flow", () => {
           TopBar: true,
           RightPanel: true,
           GlobalProgressBar: true,
-          PromptModal: true,
           VectorstoreModal: true,
         },
       },
