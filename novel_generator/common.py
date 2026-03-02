@@ -153,3 +153,14 @@ def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 7) -> str:
             time.sleep(sleep_seconds)
 
     return result
+
+
+def normalize_chapter_text(text: str) -> str:
+    """规范章节文本换行，最多保留一个空行作为段落分隔。"""
+    if not text:
+        return ""
+
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = re.sub(r"[ \t]+\n", "\n", normalized)
+    normalized = re.sub(r"\n(?:[ \t]*\n){2,}", "\n\n", normalized)
+    return normalized.strip("\n")

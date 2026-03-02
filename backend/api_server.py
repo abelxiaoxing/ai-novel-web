@@ -32,6 +32,7 @@ from backend.services import (
     finalize,
 )
 from backend.task_runtime import TaskManager
+from novel_generator.common import normalize_chapter_text
 from embedding_adapters import create_embedding_adapter
 from llm_adapters import create_llm_adapter
 from utils import read_file, save_string_to_txt
@@ -271,7 +272,7 @@ def update_chapter(project_id: str, chapter_number: int, payload: UpdateFileRequ
     project_root = _get_project_root(project_id)
     path = resolve_chapter_path(project_root, chapter_number)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    save_string_to_txt(payload.content, path)
+    save_string_to_txt(normalize_chapter_text(payload.content), path)
     return {"ok": True}
 
 

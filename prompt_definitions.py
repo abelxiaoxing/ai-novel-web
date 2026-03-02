@@ -532,6 +532,7 @@ first_chapter_draft_prompt = """\
 格式要求：
 - 仅返回章节正文文本；
 - 不使用分章节小标题；
+- 段落之间不要留空行；
 - 不要使用markdown格式。
 
 额外指导(可能未指定)：{user_guidance}
@@ -620,6 +621,7 @@ next_chapter_draft_prompt = """\
 格式要求：
 - 仅返回章节正文文本；
 - 不使用分章节小标题；
+- 段落之间不要留空行；
 - 不要使用markdown格式。
 """
 

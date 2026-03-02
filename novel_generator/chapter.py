@@ -16,7 +16,7 @@ from prompt_definitions import (
     knowledge_search_prompt
 )
 from chapter_directory_parser import get_chapter_info_from_blueprint
-from novel_generator.common import invoke_with_cleaning
+from novel_generator.common import invoke_with_cleaning, normalize_chapter_text
 from utils import read_file, clear_file_content, save_string_to_txt
 from novel_generator.vectorstore_utils import (
     get_relevant_context_from_vector_store,
@@ -582,7 +582,7 @@ def generate_chapter_draft(
         timeout=timeout
     )
 
-    chapter_content = invoke_with_cleaning(llm_adapter, prompt_text)
+    chapter_content = normalize_chapter_text(invoke_with_cleaning(llm_adapter, prompt_text))
     if not chapter_content.strip():
         logging.warning("Generated chapter draft is empty.")
     chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
@@ -666,6 +666,6 @@ def generate_chapter_draft_stream(
         yield chunk
 
     # 保存完整内容
-    final_content = "".join(full_content)
+    final_content = normalize_chapter_text("".join(full_content))
     save_string_to_txt(final_content, chapter_file)
     logging.info(f"[Draft] Chapter {novel_number} generated via stream.")

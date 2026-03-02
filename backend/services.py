@@ -9,6 +9,7 @@ from consistency_checker import check_consistency
 from novel_generator.architecture import Novel_architecture_generate
 from novel_generator.blueprint import Chapter_blueprint_generate
 from novel_generator.chapter import build_chapter_prompt, generate_chapter_draft
+from novel_generator.common import normalize_chapter_text
 from novel_generator.finalization import enrich_chapter_text, finalize_chapter
 from novel_generator.knowledge import import_knowledge_file
 from novel_generator.vectorstore_manager import (
@@ -281,9 +282,13 @@ def batch_generate(
         did_generate = False
         if resume_existing:
             existing_text = read_file(chapter_path)
-            if existing_text.strip():
+            normalized_existing = normalize_chapter_text(existing_text)
+            if normalized_existing.strip():
                 log(f"Chapter {chapter_number} already exists, skipping generation.")
                 chapter_text = existing_text
+                results.append({"chapter": chapter_number, "length": len(chapter_text)})
+                log(f"[CHAPTER_DONE] {chapter_number}")
+                continue
 
         if not chapter_text:
             chapter_payload = {"novel_number": chapter_number, **chapter_defaults}
@@ -301,6 +306,7 @@ def batch_generate(
             enriched = enrich_chapter_text(
                 **_enrich_kwargs(chapter_text, word_number, llm_config)
             )
+            enriched = normalize_chapter_text(enriched)
             os.makedirs(os.path.dirname(chapter_path), exist_ok=True)
             save_string_to_txt(enriched, chapter_path)
             chapter_text = enriched

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import fc from "fast-check";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
+import { nextTick } from "vue";
 import ProjectSelectView from "./ProjectSelectView.vue";
 import { useProjectStore } from "@/stores/project";
 
@@ -36,10 +37,26 @@ describe("ProjectSelectView Properties", () => {
             name,
           }));
           (wrapper.vm as any).searchQuery = keyword;
-          const visible = (wrapper.vm as any).visibleProjects as { name: string }[];
-          visible.forEach((project) => {
-            expect(project.name.toLowerCase()).toContain(keyword.toLowerCase());
-          });
+          await nextTick();
+
+          const normalizedKeyword = keyword.trim().toLowerCase();
+          const visible = (wrapper.vm as any).visibleProjects as { id: string; name: string }[];
+
+          const expected = names
+            .map((name, index) => ({
+              id: `p-${index}`,
+              name,
+            }))
+            .filter((project) => {
+              if (!normalizedKeyword) {
+                return true;
+              }
+              return project.name.toLowerCase().includes(normalizedKeyword);
+            })
+            .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"))
+            .map((project) => project.id);
+
+          expect(visible.map((project) => project.id)).toEqual(expected);
         }
       ),
       { numRuns: 15 }

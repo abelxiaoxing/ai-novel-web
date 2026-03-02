@@ -15,6 +15,7 @@ from utils import read_file
 
 
 _CHAPTER_FILENAME_PATTERN = re.compile(r"^chapter_(\d+)\.txt$")
+_TXT_FIRST_LINE_INDENT = "　　"
 
 
 @dataclass(frozen=True)
@@ -119,12 +120,23 @@ def build_project_txt(project_root: str, project_name: str) -> str:
             [
                 _chapter_heading(chapter.number, chapter.title),
                 "",
-                chapter.text,
+                _format_txt_paragraph_indent(chapter.text),
                 "",
             ]
         )
 
     return "\n".join(lines).strip() + "\n"
+
+
+def _format_txt_paragraph_indent(text: str) -> str:
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        if not line.strip():
+            continue
+        if line.startswith(("　　", "  ", "\t")):
+            continue
+        lines[index] = f"{_TXT_FIRST_LINE_INDENT}{line}"
+    return "\n".join(lines)
 
 
 def _render_paragraphs_as_html(text: str) -> str:

@@ -11,4 +11,5 @@ webui/.env.local
 app.log
 .ace-tool/
 .claude/
+.codex/
 openspec/
