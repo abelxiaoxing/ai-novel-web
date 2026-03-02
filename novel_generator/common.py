@@ -8,7 +8,16 @@ import os
 import re
 import time
 import traceback
+from typing import Callable, Optional
 from json import JSONDecodeError
+
+try:
+    from backend.task_runtime import TaskCancelledError
+except Exception:  # pragma: no cover - 兜底避免循环依赖或离线调用失败
+    class TaskCancelledError(RuntimeError):
+        """任务被取消时抛出。"""
+
+
 logging.basicConfig(
     filename='app.log',      # 日志文件名
     filemode='a',            # 追加模式（'w' 会覆盖）
@@ -116,6 +125,38 @@ def _debug_print_block(title: str, content: str) -> None:
     print("=" * 50 + "\n")
 
 
+def is_cancelled_exception(error: Exception) -> bool:
+    if isinstance(error, TaskCancelledError):
+        return True
+    return str(error).strip() == "任务已取消"
+
+
+def raise_if_cancelled(
+    should_cancel: Optional[Callable[[], bool]],
+    *,
+    message: str = "任务已取消",
+) -> None:
+    if should_cancel and should_cancel():
+        raise TaskCancelledError(message)
+
+
+def sleep_with_cancel(
+    seconds: float,
+    should_cancel: Optional[Callable[[], bool]],
+    *,
+    check_interval: float = 0.2,
+) -> None:
+    if seconds <= 0:
+        return
+    end_at = time.monotonic() + seconds
+    while True:
+        raise_if_cancelled(should_cancel)
+        remaining = end_at - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(max(0.01, check_interval), remaining))
+
+
 def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 7) -> str:
     """调用 LLM 并清理返回结果"""
     _debug_print_block("发送到 LLM 的提示词:", prompt)
@@ -151,6 +192,71 @@ def invoke_with_cleaning(llm_adapter, prompt: str, max_retries: int = 7) -> str:
                 raise
             sleep_seconds = _retry_backoff_seconds(retry_count)
             time.sleep(sleep_seconds)
+
+    return result
+
+
+def invoke_with_cleaning_streaming(
+    llm_adapter,
+    prompt: str,
+    should_cancel: Optional[Callable[[], bool]] = None,
+    max_retries: int = 7,
+    on_chunk: Optional[Callable[[str], None]] = None,
+) -> str:
+    """流式调用 LLM 并支持取消中断。"""
+    _debug_print_block("发送到 LLM 的提示词:", prompt)
+
+    result = ""
+    retry_count = 0
+    logging.info(
+        "LLM 流式调用开始，prompt长度=%s，max_retries=%s",
+        len(prompt),
+        max_retries,
+    )
+
+    while retry_count < max_retries:
+        raise_if_cancelled(should_cancel)
+        try:
+            chunks = []
+            stream_iter = llm_adapter.stream(prompt)
+            try:
+                for chunk in stream_iter:
+                    raise_if_cancelled(should_cancel)
+                    if not chunk:
+                        continue
+                    text_chunk = str(chunk)
+                    chunks.append(text_chunk)
+                    if on_chunk:
+                        on_chunk(text_chunk)
+            finally:
+                close_fn = getattr(stream_iter, "close", None)
+                if callable(close_fn):
+                    close_fn()
+
+            result = "".join(chunks).replace("```", "").strip()
+            _debug_print_block("LLM 返回的内容:", result)
+            if result:
+                return result
+
+            retry_count += 1
+            if retry_count < max_retries:
+                sleep_seconds = _retry_backoff_seconds(retry_count)
+                logging.warning(
+                    "Empty LLM streaming response, retrying (%s/%s) after %.1fs.",
+                    retry_count,
+                    max_retries,
+                    sleep_seconds,
+                )
+                sleep_with_cancel(sleep_seconds, should_cancel)
+        except Exception as e:
+            if is_cancelled_exception(e):
+                raise
+            retry_count += 1
+            logging.warning("LLM streaming invoke failed (%s/%s): %s", retry_count, max_retries, e)
+            if retry_count >= max_retries or not _is_retryable_error(e):
+                raise
+            sleep_seconds = _retry_backoff_seconds(retry_count)
+            sleep_with_cancel(sleep_seconds, should_cancel)
 
     return result
 

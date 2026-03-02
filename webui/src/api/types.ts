@@ -76,7 +76,7 @@ export interface ProjectState {
   batchTask?: BatchTaskState;
 }
 
-export type TaskStatus = "pending" | "running" | "success" | "failed";
+export type TaskStatus = "pending" | "running" | "success" | "failed" | "cancelled";
 
 export interface TaskResponse {
   task_id: string;

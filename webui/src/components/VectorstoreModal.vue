@@ -140,6 +140,9 @@ const waitForTaskCompletion = async (taskId: string) => {
     if (statusPayload.status === "failed") {
       throw new Error(statusPayload.error || "任务执行失败");
     }
+    if (statusPayload.status === "cancelled") {
+      throw new Error(statusPayload.error || "任务已取消");
+    }
     if (Date.now() - startedAt > taskTimeoutMs) {
       throw new Error("任务执行超时");
     }

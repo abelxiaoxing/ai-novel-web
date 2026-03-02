@@ -38,17 +38,26 @@ type BatchRangePayload = {
   delaySeconds: number;
 };
 
-type TerminalStatus = "success" | "failed";
-type WaitForTaskTerminalStatus = "success" | "failed" | "timeout" | "aborted";
+type ChapterGenerationAction = "draft" | "finalize" | "batch";
+type RunningChapterGenerationTask = {
+  taskId: string;
+  action: ChapterGenerationAction;
+  label: string;
+};
+type TerminalStatus = "success" | "failed" | "cancelled";
+type WaitForTaskTerminalStatus = "success" | "failed" | "cancelled" | "timeout" | "aborted";
 type NumericFieldKey = "chapterNumber" | "wordNumber" | "numberOfChapters";
 
 type WaitForTaskTerminalOptions = {
   timeoutMs?: number;
   signal?: AbortSignal;
+  requireHandled?: boolean;
 };
 
 type ValidationFailure = { field: NumericFieldKey; reason: string };
 type ActionLockKey = string;
+
+const CHAPTER_GENERATION_LOCK_KEY: ActionLockKey = "chapter_generation";
 
 type UseWorkbenchActionsOptions = {
   form: WorkbenchForm;
@@ -104,6 +113,7 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
   const batchPrepareRunning = ref(false);
   const terminalProcessInFlight = ref(false);
   const terminalProcessNeedsRerun = ref(false);
+  const generationCancelingTaskId = ref<string | null>(null);
 
   const setTaskActionMeta = (taskId: string, meta: TaskActionMeta) => {
     taskActionMap.set(taskId, meta);
@@ -123,8 +133,14 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     return workflowStore.currentChapter;
   };
 
+  const isChapterGenerationAction = (action: WorkbenchAction): action is ChapterGenerationAction =>
+    action === "draft" || action === "finalize" || action === "batch";
+
   const toActionLockKey = (action: WorkbenchAction, chapterNumber?: number): ActionLockKey => {
-    if (action === "draft" || action === "finalize" || action === "preview-prompt" || action === "consistency") {
+    if (isChapterGenerationAction(action)) {
+      return CHAPTER_GENERATION_LOCK_KEY;
+    }
+    if (action === "preview-prompt" || action === "consistency") {
       const chapter =
         typeof chapterNumber === "number" && Number.isInteger(chapterNumber) && chapterNumber > 0
           ? chapterNumber
@@ -166,6 +182,9 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     }
     taskLockKeyMap.delete(taskId);
     unlockAction(key);
+    if (generationCancelingTaskId.value === taskId) {
+      generationCancelingTaskId.value = null;
+    }
   };
 
   const pruneStaleActionLocks = () => {
@@ -174,6 +193,12 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
       if (!task || task.handled) {
         taskLockKeyMap.delete(taskId);
         unlockAction(key);
+      }
+    }
+    if (generationCancelingTaskId.value) {
+      const task = taskStore.tasks.find((item) => item.id === generationCancelingTaskId.value);
+      if (!task || (task.status !== "pending" && task.status !== "running")) {
+        generationCancelingTaskId.value = null;
       }
     }
   };
@@ -282,6 +307,32 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     ),
   });
 
+  const resolveTaskErrorMessage = (error: unknown): string => {
+    if (!(error instanceof Error)) {
+      return "任务执行失败";
+    }
+    const raw = error.message?.trim() || "";
+    if (!raw) {
+      return "任务执行失败";
+    }
+    try {
+      const parsed = JSON.parse(raw) as { detail?: unknown };
+      const detail = parsed.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail.trim();
+      }
+      if (detail && typeof detail === "object") {
+        const message = (detail as { message?: unknown }).message;
+        if (typeof message === "string" && message.trim()) {
+          return message.trim();
+        }
+      }
+    } catch {
+      return raw;
+    }
+    return raw;
+  };
+
   const runTask = async (
     label: string,
     apiCall: () => Promise<TaskResponse>,
@@ -306,7 +357,7 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
       }
       return payload.task_id;
     } catch (error) {
-      projectStore.error = error instanceof Error ? error.message : "任务执行失败";
+      projectStore.error = resolveTaskErrorMessage(error);
       if (lockKey) {
         unlockAction(lockKey);
       }
@@ -361,11 +412,17 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     taskStore.tasks.find((item) => item.id === taskId);
 
   const isTerminalStatus = (status: string): status is TerminalStatus =>
-    status === "success" || status === "failed";
+    status === "success" || status === "failed" || status === "cancelled";
 
-  const getTerminalTaskById = (taskId: string): { status: TerminalStatus } | null => {
+  const getTerminalTaskById = (
+    taskId: string,
+    requireHandled = false
+  ): { status: TerminalStatus } | null => {
     const task = getPendingTaskById(taskId);
     if (!task || !isTerminalStatus(task.status)) {
+      return null;
+    }
+    if (requireHandled && task.handled !== true) {
       return null;
     }
     return { status: task.status };
@@ -376,8 +433,8 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     options: WaitForTaskTerminalOptions = {}
   ) =>
     new Promise<WaitForTaskTerminalStatus>((resolve) => {
-      const { timeoutMs = 90_000, signal } = options;
-      const initial = getTerminalTaskById(taskId);
+      const { timeoutMs = 90_000, signal, requireHandled = false } = options;
+      const initial = getTerminalTaskById(taskId, requireHandled);
       if (initial) {
         resolve(initial.status);
         return;
@@ -422,7 +479,7 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
       }
 
       checkInterval = window.setInterval(() => {
-        const current = getTerminalTaskById(taskId);
+        const current = getTerminalTaskById(taskId, requireHandled);
         if (current) {
           settle(current.status);
         }
@@ -507,6 +564,7 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
         const status = await waitForTaskTerminal(finalizeTaskId, {
           timeoutMs: 90_000,
           signal: abortController.signal,
+          requireHandled: true,
         });
         if (status === "success" && preFinalizeSessionManager.isSessionValid(finalizeSessionId)) {
           preFinalizeSessionManager.settleSession(finalizeSessionId);
@@ -519,6 +577,9 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
           } else if (status === "aborted") {
             await cancelPreFinalizeTask(finalizeTaskId, finalizeSessionId);
             toastStore.error("自动定稿等待已取消，已取消批量生成");
+          } else if (status === "cancelled") {
+            preFinalizeSessionManager.settleSession(finalizeSessionId);
+            toastStore.info("自动定稿已取消，已取消批量生成");
           } else if (status === "success") {
             preFinalizeSessionManager.invalidateSession(finalizeSessionId);
             toastStore.warning("检测到失效的自动定稿结果，已取消批量生成");
@@ -688,17 +749,76 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     );
   };
 
+  const getRunningChapterGenerationTask = (): RunningChapterGenerationTask | null => {
+    pruneStaleActionLocks();
+    for (const task of taskStore.tasks) {
+      if (task.status !== "pending" && task.status !== "running") {
+        continue;
+      }
+      const action = getTaskActionMeta(task.id)?.action;
+      if (!action || !isChapterGenerationAction(action)) {
+        continue;
+      }
+      return {
+        taskId: task.id,
+        action,
+        label: task.label,
+      };
+    }
+    return null;
+  };
+
+  const isChapterGenerationCanceling = (taskId?: string) => {
+    pruneStaleActionLocks();
+    if (!generationCancelingTaskId.value) {
+      return false;
+    }
+    if (!taskId) {
+      return true;
+    }
+    return generationCancelingTaskId.value === taskId;
+  };
+
+  const cancelCurrentChapterGeneration = async () => {
+    const runningTask = getRunningChapterGenerationTask();
+    if (!runningTask) {
+      return false;
+    }
+    if (isChapterGenerationCanceling(runningTask.taskId)) {
+      return false;
+    }
+    generationCancelingTaskId.value = runningTask.taskId;
+    if (runningTask.action === "batch") {
+      batchCancelRequested.value = true;
+    }
+    try {
+      await cancelTask(runningTask.taskId);
+      toastStore.info(`已提交取消请求：${runningTask.label}`);
+      return true;
+    } catch (error) {
+      if (runningTask.action === "batch") {
+        batchCancelRequested.value = false;
+      }
+      generationCancelingTaskId.value = null;
+      const reason = resolveTaskErrorMessage(error);
+      if (runningTask.action === "batch") {
+        batchError.value = reason;
+      }
+      toastStore.error(`取消失败：${reason}`);
+      return false;
+    }
+  };
+
   const cancelBatchAction = async () => {
     if (!batchTaskId.value || batchCancelRequested.value) {
       return;
     }
-    batchCancelRequested.value = true;
-    try {
-      await cancelTask(batchTaskId.value);
-    } catch (error) {
+    const runningTask = getRunningChapterGenerationTask();
+    if (!runningTask || runningTask.taskId !== batchTaskId.value || runningTask.action !== "batch") {
       batchCancelRequested.value = false;
-      batchError.value = error instanceof Error ? error.message : "取消失败";
+      return;
     }
+    await cancelCurrentChapterGeneration();
   };
 
   const getPendingPromptTaskId = () => pendingPromptTask.value;
@@ -718,5 +838,8 @@ export function useWorkbenchActions(options: UseWorkbenchActionsOptions) {
     clearPendingPromptTask,
     isPreFinalizeSessionValid,
     isActionBusy,
+    getRunningChapterGenerationTask,
+    isChapterGenerationCanceling,
+    cancelCurrentChapterGeneration,
   };
 }

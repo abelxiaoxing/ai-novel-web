@@ -5,13 +5,19 @@
 """
 import logging
 import os
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Any, Callable, Dict, Optional
 
 from embedding_adapters import create_embedding_adapter
 from llm_adapters import create_llm_adapter
-from novel_generator.common import invoke_with_cleaning
+from novel_generator.common import (
+    invoke_with_cleaning,
+    invoke_with_cleaning_streaming,
+    is_cancelled_exception,
+    raise_if_cancelled as raise_cancelled,
+)
 from novel_generator.vectorstore_utils import update_vector_store
 from prompt_definitions import summary_prompt, update_character_state_prompt
 from utils import clear_file_content, read_file, save_string_to_txt
@@ -41,6 +47,7 @@ def _run_timed_step(step_name: str, worker: Callable[[], Any]) -> Dict[str, Any]
         value = worker()
         return {
             "ok": True,
+            "cancelled": False,
             "value": value,
             "error": "",
             "seconds": round(time.perf_counter() - started, 3),
@@ -50,6 +57,7 @@ def _run_timed_step(step_name: str, worker: Callable[[], Any]) -> Dict[str, Any]
         logging.warning("%s failed: %s", step_name, exc)
         return {
             "ok": False,
+            "cancelled": is_cancelled_exception(exc),
             "value": None,
             "error": str(exc),
             "seconds": round(time.perf_counter() - started, 3),
@@ -76,6 +84,7 @@ def finalize_chapter(
     progress_callback: Optional[Callable[[str], None]] = None,
     llm_max_retries: int = 3,
     parallel_workers: int = 3,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     """
     对指定章节做最终处理：更新前文摘要、更新角色状态、插入向量库等。
@@ -83,6 +92,16 @@ def finalize_chapter(
     """
     total_started = time.perf_counter()
     _emit_progress(progress_callback, f"定稿开始：第 {novel_number} 章")
+    stop_event = threading.Event()
+
+    def raise_if_cancelled(stage: str) -> None:
+        cancelled = stop_event.is_set() or (should_cancel and should_cancel())
+        if cancelled:
+            stop_event.set()
+            _emit_progress(progress_callback, f"定稿已取消：{stage}")
+            raise_cancelled(lambda: True)
+
+    raise_if_cancelled("初始化阶段")
 
     chapters_dir = os.path.join(filepath, "chapters")
     chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
@@ -112,6 +131,9 @@ def finalize_chapter(
         old_state=old_character_state
     )
 
+    def llm_should_cancel() -> bool:
+        return stop_event.is_set() or bool(should_cancel and should_cancel())
+
     def invoke_summary() -> str:
         adapter = create_llm_adapter(
             interface_format=interface_format,
@@ -122,7 +144,12 @@ def finalize_chapter(
             max_tokens=max_tokens,
             timeout=timeout
         )
-        return invoke_with_cleaning(adapter, prompt_summary, max_retries=llm_max_retries)
+        return invoke_with_cleaning_streaming(
+            adapter,
+            prompt_summary,
+            should_cancel=llm_should_cancel,
+            max_retries=llm_max_retries,
+        )
 
     def invoke_char_state() -> str:
         adapter = create_llm_adapter(
@@ -134,7 +161,12 @@ def finalize_chapter(
             max_tokens=max_tokens,
             timeout=timeout
         )
-        return invoke_with_cleaning(adapter, prompt_char_state, max_retries=llm_max_retries)
+        return invoke_with_cleaning_streaming(
+            adapter,
+            prompt_char_state,
+            should_cancel=llm_should_cancel,
+            max_retries=llm_max_retries,
+        )
 
     def invoke_vectorstore_update() -> Dict[str, Any]:
         return update_vector_store(
@@ -152,45 +184,88 @@ def finalize_chapter(
     _emit_progress(
         progress_callback,
         (
-            f"定稿任务已提交：摘要/角色状态并行更新（章节长度={len(chapter_text)}，"
+            f"定稿计算阶段开始：摘要/角色状态并行更新（章节长度={len(chapter_text)}，"
             f"摘要长度={len(old_global_summary)}，角色状态长度={len(old_character_state)}）"
         ),
     )
+    raise_if_cancelled("计算阶段开始前")
 
     workers = max(1, parallel_workers)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        summary_future = pool.submit(_run_timed_step, "summary_update", invoke_summary)
-        char_state_future = pool.submit(_run_timed_step, "character_state_update", invoke_char_state)
-        vectorstore_future = None
-        if not skip_vectorstore:
-            vectorstore_future = pool.submit(_run_timed_step, "vectorstore_update", invoke_vectorstore_update)
-
-        summary_result = summary_future.result()
-        char_state_result = char_state_future.result()
-        if vectorstore_future:
-            vectorstore_result = vectorstore_future.result()
+    pool = ThreadPoolExecutor(max_workers=workers)
+    summary_future = pool.submit(_run_timed_step, "summary_update", invoke_summary)
+    char_state_future = pool.submit(_run_timed_step, "character_state_update", invoke_char_state)
+    pending = {
+        summary_future: "summary_update",
+        char_state_future: "character_state_update",
+    }
+    parallel_results: Dict[str, Dict[str, Any]] = {}
+    cancelled_in_parallel = False
+    try:
+        while pending:
+            if llm_should_cancel():
+                cancelled_in_parallel = True
+                break
+            done, _ = wait(
+                list(pending.keys()),
+                timeout=0.2,
+                return_when=FIRST_COMPLETED,
+            )
+            for future in done:
+                step_name = pending.pop(future, "")
+                if not step_name:
+                    continue
+                try:
+                    parallel_results[step_name] = future.result()
+                except Exception as exc:
+                    parallel_results[step_name] = {
+                        "ok": False,
+                        "cancelled": is_cancelled_exception(exc),
+                        "value": None,
+                        "error": str(exc),
+                        "seconds": 0.0,
+                        "step": step_name,
+                    }
+    finally:
+        if cancelled_in_parallel:
+            stop_event.set()
+            for future in list(pending.keys()):
+                future.cancel()
+            pool.shutdown(wait=False, cancel_futures=True)
         else:
-            vectorstore_result = {
-                "ok": True,
-                "value": {"updated": False, "reason": "skipped", "segments": 0},
-                "error": "",
-                "seconds": 0.0,
-                "step": "vectorstore_update",
-            }
+            pool.shutdown(wait=True)
+
+    if cancelled_in_parallel:
+        _emit_progress(progress_callback, "取消已接收，正在中断模型调用。")
+        raise_if_cancelled("并行计算阶段")
+
+    summary_result = parallel_results.get("summary_update", {})
+    char_state_result = parallel_results.get("character_state_update", {})
+
+    if summary_result.get("cancelled") or char_state_result.get("cancelled"):
+        stop_event.set()
+        _emit_progress(progress_callback, "取消已接收，正在中断模型调用。")
+        raise_if_cancelled("并行结果汇总阶段")
 
     # 并行阶段失败时，做一次串行兜底，优先保住定稿稳定性。
     if not summary_result["ok"]:
         _emit_progress(progress_callback, "前文摘要并行更新失败，尝试串行兜底一次。")
+        raise_if_cancelled("前文摘要串行兜底前")
         first_try_seconds = float(summary_result.get("seconds", 0) or 0)
         fallback_result = _run_timed_step("summary_update_fallback", invoke_summary)
         fallback_result["seconds"] = round(first_try_seconds + float(fallback_result.get("seconds", 0) or 0), 3)
         summary_result = fallback_result
     if not char_state_result["ok"]:
         _emit_progress(progress_callback, "角色状态并行更新失败，尝试串行兜底一次。")
+        raise_if_cancelled("角色状态串行兜底前")
         first_try_seconds = float(char_state_result.get("seconds", 0) or 0)
         fallback_result = _run_timed_step("character_state_update_fallback", invoke_char_state)
         fallback_result["seconds"] = round(first_try_seconds + float(fallback_result.get("seconds", 0) or 0), 3)
         char_state_result = fallback_result
+
+    if summary_result.get("cancelled") or char_state_result.get("cancelled"):
+        stop_event.set()
+        _emit_progress(progress_callback, "取消已接收，正在中断模型调用。")
+        raise_if_cancelled("串行兜底阶段")
 
     summary_text = old_global_summary
     summary_updated = False
@@ -216,10 +291,25 @@ def finalize_chapter(
     else:
         _emit_progress(progress_callback, f"角色状态更新失败，保留旧状态。原因：{char_state_result['error']}")
 
+    raise_if_cancelled("计算阶段完成，写入前")
     clear_file_content(global_summary_file)
     save_string_to_txt(summary_text, global_summary_file)
     clear_file_content(character_state_file)
     save_string_to_txt(char_state_text, character_state_file)
+    _emit_progress(progress_callback, "定稿写入阶段完成：摘要与角色状态已落盘。")
+
+    if skip_vectorstore:
+        vectorstore_result = {
+            "ok": True,
+            "value": {"updated": False, "reason": "skipped", "segments": 0},
+            "error": "",
+            "seconds": 0.0,
+            "step": "vectorstore_update",
+        }
+    else:
+        raise_if_cancelled("写入完成，向量库更新前")
+        _emit_progress(progress_callback, "定稿向量阶段开始：更新向量库。")
+        vectorstore_result = _run_timed_step("vectorstore_update", invoke_vectorstore_update)
 
     vectorstore_value = vectorstore_result.get("value") if vectorstore_result else None
     if isinstance(vectorstore_value, dict):

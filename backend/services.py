@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import os
 import tempfile
-import time
 from typing import Any, Callable, Dict, List, Optional
 
 from consistency_checker import check_consistency
 from novel_generator.architecture import Novel_architecture_generate
 from novel_generator.blueprint import Chapter_blueprint_generate
 from novel_generator.chapter import build_chapter_prompt, generate_chapter_draft
-from novel_generator.common import normalize_chapter_text
+from novel_generator.common import normalize_chapter_text, sleep_with_cancel
 from novel_generator.finalization import enrich_chapter_text, finalize_chapter
 from novel_generator.knowledge import import_knowledge_file
 from novel_generator.vectorstore_manager import (
@@ -20,6 +19,7 @@ from novel_generator.vectorstore_utils import clear_vector_store
 from utils import read_file, save_string_to_txt
 
 from backend.file_keys import resolve_chapter_path
+from backend.task_runtime import TaskCancelledError
 from embedding_adapters import create_embedding_adapter
 
 
@@ -27,6 +27,29 @@ DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 2048
 DEFAULT_TIMEOUT = 900
 DEFAULT_RETRIEVAL_K = 2
+
+
+def _raise_if_cancelled(
+    should_cancel: Optional[Callable[[], bool]],
+    log,
+    *,
+    message: str = "任务已取消",
+    with_interrupt_hint: bool = False,
+) -> None:
+    if should_cancel and should_cancel():
+        log(message)
+        if with_interrupt_hint:
+            log("取消已接收，正在中断模型调用。")
+        raise TaskCancelledError("任务已取消")
+
+
+def _sleep_with_cancel(
+    delay_seconds: float,
+    should_cancel: Optional[Callable[[], bool]],
+    log,
+) -> None:
+    _raise_if_cancelled(should_cancel, log, message="批量任务已取消。")
+    sleep_with_cancel(delay_seconds, should_cancel)
 
 
 def _resolve_retrieval_k(payload: Dict[str, Any], embedding_config: Dict[str, Any]) -> int:
@@ -168,11 +191,19 @@ def build_prompt(
     llm_config: Dict[str, Any],
     embedding_config: Dict[str, Any],
     log,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
+    _raise_if_cancelled(should_cancel, log, message="提示词任务已取消。", with_interrupt_hint=True)
     log("Building chapter prompt...")
-    prompt_text = build_chapter_prompt(
-        **_chapter_generation_kwargs(project_root, payload, llm_config, embedding_config)
-    )
+    try:
+        prompt_text = build_chapter_prompt(
+            **_chapter_generation_kwargs(project_root, payload, llm_config, embedding_config),
+            should_cancel=should_cancel,
+        )
+    except TaskCancelledError:
+        log("取消已接收，正在中断模型调用。")
+        raise
+    _raise_if_cancelled(should_cancel, log, message="提示词任务已取消。", with_interrupt_hint=True)
     log("Prompt ready.")
     return {"result": {"prompt_text": prompt_text}}
 
@@ -183,12 +214,24 @@ def generate_draft(
     llm_config: Dict[str, Any],
     embedding_config: Dict[str, Any],
     log,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
+    _raise_if_cancelled(should_cancel, log, message="草稿任务已取消。", with_interrupt_hint=True)
     log(f"Generating draft for chapter {payload['novel_number']}...")
-    chapter_text = generate_chapter_draft(
-        **_chapter_generation_kwargs(project_root, payload, llm_config, embedding_config),
-        custom_prompt_text=payload.get("custom_prompt_text"),
-    )
+    try:
+        chapter_text = generate_chapter_draft(
+            **_chapter_generation_kwargs(project_root, payload, llm_config, embedding_config),
+            custom_prompt_text=payload.get("custom_prompt_text"),
+            save_to_file=False,
+            should_cancel=should_cancel,
+        )
+    except TaskCancelledError:
+        log("取消已接收，正在中断模型调用。")
+        raise
+    _raise_if_cancelled(should_cancel, log, message="草稿任务已取消，停止写入。", with_interrupt_hint=True)
+    chapter_path = resolve_chapter_path(project_root, int(payload["novel_number"]))
+    os.makedirs(os.path.dirname(chapter_path), exist_ok=True)
+    save_string_to_txt(normalize_chapter_text(chapter_text), chapter_path)
     log("Draft completed.")
     return {
         "result": {"chapter_text": chapter_text},
@@ -202,19 +245,26 @@ def finalize(
     llm_config: Dict[str, Any],
     embedding_config: Dict[str, Any],
     log,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
+    _raise_if_cancelled(should_cancel, log, message="定稿任务已取消。", with_interrupt_hint=True)
     log(f"Finalizing chapter {payload['novel_number']}...")
-    report = finalize_chapter(
-        **_finalize_kwargs(
-            project_root,
-            payload["novel_number"],
-            payload["word_number"],
-            llm_config,
-            embedding_config,
-            log,
-            skip_vectorstore=bool(payload.get("skip_vectorstore", False)),
+    try:
+        report = finalize_chapter(
+            **_finalize_kwargs(
+                project_root,
+                payload["novel_number"],
+                payload["word_number"],
+                llm_config,
+                embedding_config,
+                log,
+                skip_vectorstore=bool(payload.get("skip_vectorstore", False)),
+            ),
+            should_cancel=should_cancel,
         )
-    )
+    except TaskCancelledError:
+        log("取消已接收，正在中断模型调用。")
+        raise
     log("Finalization completed.")
     summary = read_file(os.path.join(project_root, "global_summary.txt"))
     character_state = read_file(os.path.join(project_root, "character_state.txt"))
@@ -272,9 +322,7 @@ def batch_generate(
     results: List[Dict[str, Any]] = []
 
     for chapter_number in range(start_chapter, end_chapter + 1):
-        if should_cancel and should_cancel():
-            log("Batch cancelled.")
-            raise RuntimeError("任务已取消")
+        _raise_if_cancelled(should_cancel, log, message="Batch cancelled.", with_interrupt_hint=True)
         log(f"Drafting chapter {chapter_number}...")
 
         chapter_path = resolve_chapter_path(project_root, chapter_number)
@@ -291,39 +339,55 @@ def batch_generate(
                 continue
 
         if not chapter_text:
+            _raise_if_cancelled(should_cancel, log, message="Batch cancelled.", with_interrupt_hint=True)
             chapter_payload = {"novel_number": chapter_number, **chapter_defaults}
-            chapter_text = generate_draft(
-                project_root,
-                chapter_payload,
-                llm_config,
-                embedding_config,
-                log,
-            )["result"]["chapter_text"]
+            try:
+                chapter_text = generate_draft(
+                    project_root,
+                    chapter_payload,
+                    llm_config,
+                    embedding_config,
+                    log,
+                    should_cancel=should_cancel,
+                )["result"]["chapter_text"]
+            except TaskCancelledError:
+                log("取消已接收，正在中断模型调用。")
+                raise
             did_generate = True
+            _raise_if_cancelled(should_cancel, log, message="Batch cancelled.", with_interrupt_hint=True)
 
         if auto_enrich and min_word and len(chapter_text) < min_word:
+            _raise_if_cancelled(should_cancel, log, message="Batch cancelled.", with_interrupt_hint=True)
             log(f"Enriching chapter {chapter_number} for length...")
             enriched = enrich_chapter_text(
                 **_enrich_kwargs(chapter_text, word_number, llm_config)
             )
             enriched = normalize_chapter_text(enriched)
+            _raise_if_cancelled(should_cancel, log, message="Batch cancelled.", with_interrupt_hint=True)
             os.makedirs(os.path.dirname(chapter_path), exist_ok=True)
             save_string_to_txt(enriched, chapter_path)
             chapter_text = enriched
             did_generate = True
+            _raise_if_cancelled(should_cancel, log, message="Batch cancelled.", with_interrupt_hint=True)
 
         if did_generate:
+            _raise_if_cancelled(should_cancel, log, message="Batch cancelled.", with_interrupt_hint=True)
             log(f"Finalizing chapter {chapter_number}...")
-            finalize_report = finalize_chapter(
-                **_finalize_kwargs(
-                    project_root,
-                    chapter_number,
-                    word_number,
-                    llm_config,
-                    embedding_config,
-                    log,
+            try:
+                finalize_report = finalize_chapter(
+                    **_finalize_kwargs(
+                        project_root,
+                        chapter_number,
+                        word_number,
+                        llm_config,
+                        embedding_config,
+                        log,
+                    ),
+                    should_cancel=should_cancel,
                 )
-            )
+            except TaskCancelledError:
+                log("取消已接收，正在中断模型调用。")
+                raise
             total_seconds = (
                 finalize_report.get("timings", {}).get("total_seconds")
                 if isinstance(finalize_report, dict)
@@ -337,7 +401,11 @@ def batch_generate(
         results.append({"chapter": chapter_number, "length": len(chapter_text)})
         log(f"[CHAPTER_DONE] {chapter_number}")
         if delay_seconds and did_generate and chapter_number < end_chapter:
-            time.sleep(delay_seconds)
+            try:
+                _sleep_with_cancel(float(delay_seconds), should_cancel, log)
+            except TaskCancelledError:
+                log("取消已接收，正在中断模型调用。")
+                raise
 
     log("Batch completed.")
     return {"result": {"chapters": results}}

@@ -86,7 +86,7 @@ export function createTerminalTaskProcessor(options: ProcessTerminalTasksOptions
       do {
         terminalProcessNeedsRerun.value = false;
         for (const item of taskStore.tasks) {
-          if (item.status !== "success" && item.status !== "failed") {
+          if (item.status !== "success" && item.status !== "failed" && item.status !== "cancelled") {
             continue;
           }
           if (item.handled) {

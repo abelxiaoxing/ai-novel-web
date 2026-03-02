@@ -58,9 +58,14 @@
       <RightPanel
         :form="form"
         :action-busy-map="actionBusyMap"
+        :generation-busy="chapterGenerationBusy"
+        :generation-busy-reason="chapterGenerationBusyReason"
+        :generation-canceling="chapterGenerationCanceling"
+        :current-generation-label="runningChapterGenerationLabel"
         :right-panel-visible="panelStore.rightPanel"
         @update:form="handleFormUpdate"
         @run="(action: WorkbenchAction) => runAction(action)"
+        @cancel-generation="cancelCurrentGenerationTask"
         @next-chapter="handleNextChapter"
         @import-knowledge="handleKnowledgeImport"
         @manage-vectorstore="handleVectorstoreManage"
@@ -1100,6 +1105,21 @@ const handleTerminalTask = async ({
     return;
   }
 
+  if (task.status === "cancelled") {
+    if (action === "batch") {
+      await projectStore.refreshFileTree();
+      batchRunning.value = false;
+      batchCancelRequested.value = false;
+      batchSummary.value = "批量生成已取消。";
+      batchError.value = "";
+      queueSaveState();
+      toastStore.info("批量生成已取消");
+      return;
+    }
+    toastStore.info(`${task.label}已取消`);
+    return;
+  }
+
   const message = task.error ? `${task.label}失败：${task.error}` : `${task.label}失败`;
   if (action === "batch") {
     await projectStore.refreshFileTree();
@@ -1127,6 +1147,9 @@ const {
   clearPendingPromptTask,
   isPreFinalizeSessionValid,
   isActionBusy,
+  getRunningChapterGenerationTask,
+  isChapterGenerationCanceling,
+  cancelCurrentChapterGeneration,
 } = useWorkbenchActions({
   form,
   configStore,
@@ -1146,6 +1169,23 @@ const {
   onQueueSaveState: queueSaveState,
   onTaskHandled: handleTerminalTask,
 });
+
+const chapterGenerationTask = computed(() => getRunningChapterGenerationTask());
+const chapterGenerationBusy = computed(() => Boolean(chapterGenerationTask.value));
+const chapterGenerationBusyReason = computed(() =>
+  chapterGenerationBusy.value ? "有章节生成任务进行中，请等待或取消" : ""
+);
+const chapterGenerationCanceling = computed(() => {
+  const task = chapterGenerationTask.value;
+  if (!task) {
+    return false;
+  }
+  return isChapterGenerationCanceling(task.taskId);
+});
+const runningChapterGenerationLabel = computed(() => chapterGenerationTask.value?.label ?? "");
+const cancelCurrentGenerationTask = async () => {
+  await cancelCurrentChapterGeneration();
+};
 
 const actionBusyMap = computed(() => {
   const parsedChapter = Number(form.chapterNumber);
@@ -1300,7 +1340,7 @@ watch(
     if (!state) {
       return;
     }
-    if (state.status === "failed" || state.status === "missing") {
+    if (state.status === "failed" || state.status === "cancelled" || state.status === "missing") {
       clearPendingPromptTask();
       return;
     }

@@ -31,7 +31,7 @@ from backend.services import (
     save_upload_to_temp,
     finalize,
 )
-from backend.task_runtime import TaskManager
+from backend.task_runtime import TaskConflictError, TaskManager
 from novel_generator.common import normalize_chapter_text
 from embedding_adapters import create_embedding_adapter
 from llm_adapters import create_llm_adapter
@@ -149,6 +149,7 @@ app.add_middleware(
 project_store = ProjectStore()
 config_store = ConfigStore()
 task_manager = TaskManager()
+CHAPTER_GENERATION_MUTEX_GROUP = "chapter_generation"
 
 
 def _get_project_root(project_id: str) -> str:
@@ -177,6 +178,28 @@ def _resolve_llm_config(purpose: str, name_override: Optional[str]) -> Dict[str,
 def _resolve_embedding_config(name_override: Optional[str]) -> Dict[str, Any]:
     _, embedding_config = config_store.resolve_embedding_config(name_override)
     return embedding_config
+
+
+def _normalize_config_test_entry(raw_entry: Any) -> Dict[str, Any]:
+    entry = raw_entry or {}
+    if isinstance(entry, dict) and isinstance(entry.get("entry"), dict):
+        entry = entry["entry"]
+    if not isinstance(entry, dict):
+        return {}
+    normalized: Dict[str, Any] = {}
+    for key, value in entry.items():
+        normalized[key] = value.strip() if isinstance(value, str) else value
+    return normalized
+
+
+def _raise_task_mutex_conflict(exc: TaskConflictError) -> None:
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "message": "已有章节生成任务在运行",
+            "blocking_task": exc.blocking_task,
+        },
+    ) from exc
 
 
 @app.get("/api/projects")
@@ -393,7 +416,7 @@ async def stream_task(task_id: str):
                 data = json.dumps({"message": logs[last_index]})
                 yield f"data: {data}\n\n"
                 last_index += 1
-            if task["status"] in ("success", "failed") and last_index >= len(logs):
+            if task["status"] in ("success", "failed", "cancelled") and last_index >= len(logs):
                 break
             await asyncio.sleep(0.5)
 
@@ -431,16 +454,23 @@ def api_build_prompt(project_id: str, payload: BuildPromptRequest) -> TaskRespon
     project_root = _get_project_root(project_id)
     llm_config = _resolve_llm_config("build_prompt", payload.llm_config_name)
     embedding_config = _resolve_embedding_config(payload.embedding_config_name)
-    task_id = task_manager.create_task(
-        "build_prompt",
-        lambda log: build_prompt(
+    task_id_holder = [""]
+
+    def runner(log):
+        return build_prompt(
             project_root,
             payload.model_dump(),
             llm_config,
             embedding_config,
             log,
-        ),
+            should_cancel=lambda: task_manager.is_cancelled(task_id_holder[0]),
+        )
+
+    task_id = task_manager.create_task(
+        "build_prompt",
+        runner,
     )
+    task_id_holder[0] = task_id
     return TaskResponse(task_id=task_id)
 
 
@@ -449,16 +479,28 @@ def api_generate_draft(project_id: str, payload: DraftRequest) -> TaskResponse:
     project_root = _get_project_root(project_id)
     llm_config = _resolve_llm_config("draft", payload.llm_config_name)
     embedding_config = _resolve_embedding_config(payload.embedding_config_name)
-    task_id = task_manager.create_task(
-        "draft",
-        lambda log: generate_draft(
+    task_id_holder = [""]
+
+    def runner(log):
+        return generate_draft(
             project_root,
             payload.model_dump(),
             llm_config,
             embedding_config,
             log,
-        ),
-    )
+            should_cancel=lambda: task_manager.is_cancelled(task_id_holder[0]),
+        )
+
+    try:
+        task_id = task_manager.create_task(
+            "draft",
+            runner,
+            project_id=project_id,
+            mutex_group=CHAPTER_GENERATION_MUTEX_GROUP,
+        )
+    except TaskConflictError as exc:
+        _raise_task_mutex_conflict(exc)
+    task_id_holder[0] = task_id
     return TaskResponse(task_id=task_id)
 
 
@@ -478,16 +520,28 @@ def api_finalize(project_id: str, payload: FinalizeRequest) -> TaskResponse:
     project_root = _get_project_root(project_id)
     llm_config = _resolve_llm_config("finalize", payload.llm_config_name)
     embedding_config = _resolve_embedding_config(payload.embedding_config_name)
-    task_id = task_manager.create_task(
-        "finalize",
-        lambda log: finalize(
+    task_id_holder = [""]
+
+    def runner(log):
+        return finalize(
             project_root,
             payload.model_dump(),
             llm_config,
             embedding_config,
             log,
-        ),
-    )
+            should_cancel=lambda: task_manager.is_cancelled(task_id_holder[0]),
+        )
+
+    try:
+        task_id = task_manager.create_task(
+            "finalize",
+            runner,
+            project_id=project_id,
+            mutex_group=CHAPTER_GENERATION_MUTEX_GROUP,
+        )
+    except TaskConflictError as exc:
+        _raise_task_mutex_conflict(exc)
+    task_id_holder[0] = task_id
     return TaskResponse(task_id=task_id)
 
 
@@ -508,7 +562,15 @@ def api_batch(project_id: str, payload: BatchRequest) -> TaskResponse:
             lambda: task_manager.is_cancelled(task_id_holder[0]),
         )
 
-    task_id = task_manager.create_task("batch", runner)
+    try:
+        task_id = task_manager.create_task(
+            "batch",
+            runner,
+            project_id=project_id,
+            mutex_group=CHAPTER_GENERATION_MUTEX_GROUP,
+        )
+    except TaskConflictError as exc:
+        _raise_task_mutex_conflict(exc)
     task_id_holder[0] = task_id
     return TaskResponse(task_id=task_id)
 
@@ -625,24 +687,25 @@ def delete_llm_config(name: str) -> Dict[str, Any]:
 
 @app.post("/api/config/test/llm")
 def test_llm_config(payload: ConfigTestRequest) -> Dict[str, Any]:
-    entry = payload.entry or {}
-    if isinstance(entry, dict) and "entry" in entry and isinstance(entry["entry"], dict):
-        entry = entry["entry"]
-    interface_format = entry.get("interface_format")
-    model_name = entry.get("model_name")
-    if not interface_format or not model_name:
-        return {"ok": False, "message": "缺少 interface_format 或 model_name。"}
+    entry = _normalize_config_test_entry(payload.entry)
+    interface_format = str(entry.get("interface_format", "OpenAI")).strip() or "OpenAI"
+    model_name = str(entry.get("model_name", "")).strip()
+    api_key = str(entry.get("api_key", "")).strip()
+    if not model_name:
+        return {"ok": False, "message": "缺少 model_name。"}
+    if not api_key:
+        return {"ok": False, "message": "缺少 api_key。"}
     try:
         adapter = create_llm_adapter(
             interface_format=interface_format,
-            base_url=str(entry.get("base_url", "")),
-            model_name=str(model_name),
-            api_key=str(entry.get("api_key", "")),
+            base_url=str(entry.get("base_url", "")).strip(),
+            model_name=model_name,
+            api_key=api_key,
             temperature=float(entry.get("temperature", 0.2)),
             max_tokens=min(int(entry.get("max_tokens", 128)), 512),
             timeout=int(entry.get("timeout", 30)),
         )
-        prompt = payload.prompt or "请回复：OK"
+        prompt = str(payload.prompt or "请回复：OK").strip() or "请回复：OK"
         reply = adapter.invoke(prompt)
         if not reply:
             return {"ok": False, "message": "调用成功但未返回内容，请检查配置或模型权限。"}
@@ -691,19 +754,20 @@ def delete_embedding_config(name: str) -> Dict[str, Any]:
 
 @app.post("/api/config/test/embedding")
 def test_embedding_config(payload: ConfigTestRequest) -> Dict[str, Any]:
-    entry = payload.entry or {}
-    if isinstance(entry, dict) and "entry" in entry and isinstance(entry["entry"], dict):
-        entry = entry["entry"]
-    interface_format = entry.get("interface_format")
-    model_name = entry.get("model_name")
+    entry = _normalize_config_test_entry(payload.entry)
+    interface_format = str(entry.get("interface_format", "")).strip()
+    model_name = str(entry.get("model_name", "")).strip()
+    api_key = str(entry.get("api_key", "")).strip()
     if not interface_format or not model_name:
         return {"ok": False, "message": "缺少 interface_format 或 model_name。"}
+    if not api_key:
+        return {"ok": False, "message": "缺少 api_key。"}
     try:
         adapter = create_embedding_adapter(
             interface_format=interface_format,
-            api_key=str(entry.get("api_key", "")),
-            base_url=str(entry.get("base_url", "")),
-            model_name=str(model_name),
+            api_key=api_key,
+            base_url=str(entry.get("base_url", "")).strip(),
+            model_name=model_name,
         )
         vector = adapter.embed_query("测试向量")
         if not vector:

@@ -164,8 +164,8 @@
               <button
                 class="btn btn-outline"
                 :class="{ 'btn--busy': isBusy('draft') }"
-                :disabled="buttonStates.draftDisabled || isBusy('draft')"
-                :title="isBusy('draft') ? '任务执行中，请稍候' : (buttonStates.draftDisabledReason || '')"
+                :disabled="buttonStates.draftDisabled || chapterGenerationBusy || isBusy('draft')"
+                :title="chapterGenerationBusy ? chapterGenerationBusyReason : (isBusy('draft') ? '任务执行中，请稍候' : (buttonStates.draftDisabledReason || ''))"
                 :aria-busy="isBusy('draft')"
                 @click="$emit('run', 'draft')"
               >
@@ -177,8 +177,8 @@
               <button
                 class="btn btn-outline"
                 :class="{ 'btn--busy': isBusy('finalize') }"
-                :disabled="buttonStates.finalizeDisabled || isBusy('finalize')"
-                :title="isBusy('finalize') ? '任务执行中，请稍候' : (buttonStates.finalizeDisabledReason || '')"
+                :disabled="buttonStates.finalizeDisabled || chapterGenerationBusy || isBusy('finalize')"
+                :title="chapterGenerationBusy ? chapterGenerationBusyReason : (isBusy('finalize') ? '任务执行中，请稍候' : (buttonStates.finalizeDisabledReason || ''))"
                 :aria-busy="isBusy('finalize')"
                 @click="$emit('run', 'finalize')"
               >
@@ -201,11 +201,15 @@
               <button
                 class="btn btn-ghost"
                 :class="{ 'btn--busy': isBusy('batch') }"
-                :disabled="workflowStore.hasAnyPendingDraft || isBusy('batch')"
+                :disabled="workflowStore.hasAnyPendingDraft || chapterGenerationBusy || isBusy('batch')"
                 :title="
+                  chapterGenerationBusy
+                    ? chapterGenerationBusyReason
+                    : (
                   workflowStore.hasAnyPendingDraft
                     ? '请先完成定稿'
                     : (isBusy('batch') ? '任务执行中，请稍候' : '')
+                    )
                 "
                 :aria-busy="isBusy('batch')"
                 @click="$emit('run', 'batch')"
@@ -216,6 +220,28 @@
                 </span>
               </button>
             </div>
+
+            <div class="action-row action-row--single">
+              <button
+                class="btn btn-danger"
+                :class="{ 'btn--busy': chapterGenerationCanceling }"
+                :disabled="!chapterGenerationBusy || chapterGenerationCanceling"
+                :title="
+                  chapterGenerationBusy
+                    ? '取消当前章节生成任务'
+                    : '当前没有可取消的章节生成任务'
+                "
+                :aria-busy="chapterGenerationCanceling"
+                @click="$emit('cancel-generation')"
+              >
+                <span class="btn-label">
+                  <span v-if="chapterGenerationCanceling" class="btn-spinner" aria-hidden="true"></span>
+                  {{ chapterGenerationCanceling ? "正在发送取消..." : cancelGenerationLabel }}
+                </span>
+              </button>
+            </div>
+
+            <p v-if="chapterGenerationBusy" class="step-hint">{{ chapterGenerationBusyReason }}</p>
           </div>
         </div>
       </div>
@@ -250,12 +276,17 @@ import HelpTooltip from "./HelpTooltip.vue";
 const props = defineProps<{
   form: WorkbenchForm;
   actionBusyMap?: Partial<Record<WorkbenchAction, boolean>>;
+  generationBusy?: boolean;
+  generationBusyReason?: string;
+  generationCanceling?: boolean;
+  currentGenerationLabel?: string;
   rightPanelVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
   (event: "update:form", payload: WorkbenchForm): void;
   (event: "run", action: WorkbenchAction): void;
+  (event: "cancel-generation"): void;
   (event: "next-chapter"): void;
   (event: "import-knowledge", file: File): void;
   (event: "manage-vectorstore"): void;
@@ -298,6 +329,18 @@ const currentStepForIndicator = computed(() => activeStep.value ?? workflowStore
 
 const buttonStates = computed(() => workflowStore.buttonStates);
 const isBusy = (action: WorkbenchAction) => Boolean(props.actionBusyMap?.[action]);
+const chapterGenerationBusy = computed(() => Boolean(props.generationBusy));
+const chapterGenerationBusyReason = computed(
+  () => props.generationBusyReason || "有章节生成任务进行中，请等待或取消"
+);
+const chapterGenerationCanceling = computed(() => Boolean(props.generationCanceling));
+const cancelGenerationLabel = computed(() => {
+  const label = props.currentGenerationLabel?.trim();
+  if (!label) {
+    return "取消当前任务";
+  }
+  return `取消当前任务（${label}）`;
+});
 
 const toggleStep = (step: WorkflowStep) => {
   activeStep.value = activeStep.value === step ? null : step;

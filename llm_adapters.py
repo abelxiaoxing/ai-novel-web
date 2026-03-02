@@ -1,80 +1,112 @@
 # llm_adapters.py
 # -*- coding: utf-8 -*-
 import logging
-from typing import Optional
-from langchain_openai import ChatOpenAI, AzureChatOpenAI
-import google.generativeai as genai
-from azure.ai.inference import ChatCompletionsClient
-from azure.core.credentials import AzureKeyCredential
-from azure.ai.inference.models import SystemMessage, UserMessage
+import re
+from typing import Any, Optional
+
+from langchain_openai import ChatOpenAI
 from openai import OpenAI
 
 
 def check_base_url(url: str) -> str:
-    """
-    处理base_url的规则：
-    1. 如果url以#结尾，则移除#并直接使用用户提供的url
-    2. 否则检查是否需要添加/v1后缀
-    """
-    import re
-    url = url.strip()
+    url = str(url or "").strip()
     if not url:
         return url
-        
-    if url.endswith('#'):
-        return url.rstrip('#')
-        
-    if not re.search(r'/v\d+$', url):
-        if '/v1' not in url:
-            url = url.rstrip('/') + '/v1'
+    if url.endswith("#"):
+        return url[:-1]
+    if "/v1" not in url and not re.search(r"/v\d+$", url):
+        return url.rstrip("/") + "/v1"
     return url
 
+
+def _normalize_stream_text(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            text = ""
+            if isinstance(item, dict):
+                text = str(item.get("text", "") or "")
+            else:
+                text = str(getattr(item, "text", "") or "")
+            if text:
+                parts.append(text)
+        return "".join(parts)
+    return str(content)
+
+
+def _extract_openai_chunk_text(chunk: Any) -> str:
+    choices = getattr(chunk, "choices", None) or []
+    if not choices:
+        return ""
+    delta = getattr(choices[0], "delta", None)
+    if delta is None and isinstance(choices[0], dict):
+        delta = choices[0].get("delta")
+    if delta is None:
+        return ""
+    content = getattr(delta, "content", None)
+    if content is None and isinstance(delta, dict):
+        content = delta.get("content")
+    return _normalize_stream_text(content)
+
+
+def _stream_openai_chat_completions(
+    client: OpenAI,
+    *,
+    model_name: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    temperature: float,
+    timeout: Optional[int],
+):
+    stream = client.chat.completions.create(
+        model=model_name,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        timeout=timeout,
+        stream=True,
+    )
+    try:
+        for chunk in stream:
+            text = _extract_openai_chunk_text(chunk)
+            if text:
+                yield text
+    finally:
+        close_fn = getattr(stream, "close", None)
+        if callable(close_fn):
+            close_fn()
+
+
 class BaseLLMAdapter:
-    """
-    统一的 LLM 接口基类，为不同云端后端提供一致的方法签名。
-    """
     def invoke(self, prompt: str) -> str:
         raise NotImplementedError("Subclasses must implement .invoke(prompt) method.")
 
     def stream(self, prompt: str):
-        """流式输出，返回生成器，逐块返回文本"""
-        # 默认实现：直接返回完整结果
+        logging.warning(
+            "%s 未实现原生流式，回退到阻塞 invoke（取消中断能力较弱）。",
+            self.__class__.__name__,
+        )
         result = self.invoke(prompt)
         yield result
 
-class DeepSeekAdapter(BaseLLMAdapter):
-    """
-    适配官方/OpenAI兼容接口（使用 langchain.ChatOpenAI）
-    """
-    def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
-        self.base_url = check_base_url(base_url)
-        self.api_key = api_key
-        self.model_name = model_name
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.timeout = timeout
-
-        self._client = ChatOpenAI(
-            model=self.model_name,
-            api_key=self.api_key,
-            base_url=self.base_url,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-            timeout=self.timeout
-        )
-
-    def invoke(self, prompt: str) -> str:
-        response = self._client.invoke(prompt)
-        content = getattr(response, "content", None) if response else None
-        if not content:
-            raise RuntimeError("DeepSeekAdapter 未返回有效内容。")
-        return content
 
 class OpenAIAdapter(BaseLLMAdapter):
-    """
-    适配官方/OpenAI兼容接口（使用 langchain.ChatOpenAI）
-    """
-    def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model_name: str,
+        max_tokens: int,
+        temperature: float = 0.7,
+        timeout: Optional[int] = 600,
+    ):
         self.base_url = check_base_url(base_url)
         self.api_key = api_key
         self.model_name = model_name
@@ -88,7 +120,12 @@ class OpenAIAdapter(BaseLLMAdapter):
             base_url=self.base_url,
             max_tokens=self.max_tokens,
             temperature=self.temperature,
-            timeout=self.timeout
+            timeout=self.timeout,
+        )
+        self._stream_client = OpenAI(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            timeout=self.timeout,
         )
 
     def invoke(self, prompt: str) -> str:
@@ -98,243 +135,26 @@ class OpenAIAdapter(BaseLLMAdapter):
             raise RuntimeError("OpenAIAdapter 未返回有效内容。")
         return content
 
-class GeminiAdapter(BaseLLMAdapter):
-    """
-    适配 Google Gemini (Google Generative AI) 接口
-    """
-
-    # PenBo 修复新版本google-generativeai 不支持 Client 类问题；而是使用 GenerativeModel 类来访问API
-    def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
-        self.api_key = api_key
-        self.model_name = model_name
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.timeout = timeout
-
-        # 配置API密钥
-        genai.configure(api_key=self.api_key)
-        
-        # 创建生成模型实例
-        self._model = genai.GenerativeModel(model_name=self.model_name)
-
-    def invoke(self, prompt: str) -> str:
+    def stream(self, prompt: str):
+        has_yielded = False
         try:
-            # 设置生成配置
-            generation_config = genai.types.GenerationConfig(
-                max_output_tokens=self.max_tokens,
-                temperature=self.temperature,
-            )
-            
-            # 生成内容
-            response = self._model.generate_content(
-                prompt,
-                generation_config=generation_config
-            )
-            
-            text = getattr(response, "text", None) if response else None
-            if text:
-                return text
-            raise RuntimeError("Gemini API 未返回文本内容。")
-        except Exception as e:
-            logging.exception("Gemini API 调用失败")
-            raise RuntimeError(f"Gemini API 调用失败: {e}") from e
-
-class AzureOpenAIAdapter(BaseLLMAdapter):
-    """
-    适配 Azure OpenAI 接口（使用 langchain.ChatOpenAI）
-    """
-    def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
-        import re
-        match = re.match(r'https://(.+?)/openai/deployments/(.+?)/chat/completions\?api-version=(.+)', base_url)
-        if match:
-            self.azure_endpoint = f"https://{match.group(1)}"
-            self.azure_deployment = match.group(2)
-            self.api_version = match.group(3)
-        else:
-            raise ValueError("Invalid Azure OpenAI base_url format")
-        
-        self.api_key = api_key
-        self.model_name = self.azure_deployment
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.timeout = timeout
-
-        self._client = AzureChatOpenAI(
-            azure_endpoint=self.azure_endpoint,
-            azure_deployment=self.azure_deployment,
-            api_version=self.api_version,
-            api_key=self.api_key,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-            timeout=self.timeout
-        )
-
-    def invoke(self, prompt: str) -> str:
-        response = self._client.invoke(prompt)
-        content = getattr(response, "content", None) if response else None
-        if not content:
-            raise RuntimeError("AzureOpenAIAdapter 未返回有效内容。")
-        return content
-
-class AzureAIAdapter(BaseLLMAdapter):
-    """
-    适配 Azure AI Inference 接口，用于访问Azure AI服务部署的模型
-    使用 azure-ai-inference 库进行API调用
-    """
-    def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
-        import re
-        # 匹配形如 https://xxx.services.ai.azure.com/models/chat/completions?api-version=xxx 的URL
-        match = re.match(r'https://(.+?)\.services\.ai\.azure\.com(?:/models)?(?:/chat/completions)?(?:\?api-version=(.+))?', base_url)
-        if match:
-            # endpoint需要是形如 https://xxx.services.ai.azure.com/models 的格式
-            self.endpoint = f"https://{match.group(1)}.services.ai.azure.com/models"
-            # 如果URL中包含api-version参数，使用它；否则使用默认值
-            self.api_version = match.group(2) if match.group(2) else "2024-05-01-preview"
-        else:
-            raise ValueError("Invalid Azure AI base_url format. Expected format: https://<endpoint>.services.ai.azure.com/models/chat/completions?api-version=xxx")
-        
-        self.base_url = self.endpoint  # 存储处理后的endpoint URL
-        self.api_key = api_key
-        self.model_name = model_name
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.timeout = timeout
-
-        self._client = ChatCompletionsClient(
-            endpoint=self.endpoint,
-            credential=AzureKeyCredential(self.api_key),
-            model=self.model_name,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            timeout=self.timeout
-        )
-
-    def invoke(self, prompt: str) -> str:
-        try:
-            response = self._client.complete(
-                messages=[
-                    SystemMessage("You are a helpful assistant."),
-                    UserMessage(prompt)
-                ]
-            )
-            if not response or not getattr(response, "choices", None):
-                raise RuntimeError("Azure AI Inference 未返回 choices。")
-            content = response.choices[0].message.content
-            if not content:
-                raise RuntimeError("Azure AI Inference 返回内容为空。")
-            return content
-        except Exception as e:
-            logging.exception("Azure AI Inference API 调用失败")
-            raise RuntimeError(f"Azure AI Inference API 调用失败: {e}") from e
-
-# 火山引擎实现
-class VolcanoEngineAIAdapter(BaseLLMAdapter):
-    def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
-        self.base_url = check_base_url(base_url)
-        self.api_key = api_key
-        self.model_name = model_name
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.timeout = timeout
-
-        self._client = OpenAI(
-            base_url=base_url,
-            api_key=api_key,
-            timeout=timeout  # 添加超时配置
-        )
-    def invoke(self, prompt: str) -> str:
-        try:
-            response = self._client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": "你是DeepSeek，是一个 AI 人工智能助手"},
-                    {"role": "user", "content": prompt},
-                ],
-                timeout=self.timeout  # 添加超时参数
-            )
-            if not response or not getattr(response, "choices", None):
-                raise RuntimeError("火山引擎未返回 choices。")
-            content = response.choices[0].message.content
-            if not content:
-                raise RuntimeError("火山引擎返回内容为空。")
-            return content
-        except Exception as e:
-            logging.exception("火山引擎API调用失败")
-            raise RuntimeError(f"火山引擎API调用失败: {e}") from e
-
-class SiliconFlowAdapter(BaseLLMAdapter):
-    def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
-        self.base_url = check_base_url(base_url)
-        self.api_key = api_key
-        self.model_name = model_name
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.timeout = timeout
-
-        self._client = OpenAI(
-            base_url=base_url,
-            api_key=api_key,
-            timeout=timeout  # 添加超时配置
-        )
-    def invoke(self, prompt: str) -> str:
-        try:
-            response = self._client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": "你是DeepSeek，是一个 AI 人工智能助手"},
-                    {"role": "user", "content": prompt},
-                ],
-                timeout=self.timeout  # 添加超时参数
-            )
-            if not response or not getattr(response, "choices", None):
-                raise RuntimeError("硅基流动未返回 choices。")
-            content = response.choices[0].message.content
-            if not content:
-                raise RuntimeError("硅基流动返回内容为空。")
-            return content
-        except Exception as e:
-            logging.exception("硅基流动API调用失败")
-            raise RuntimeError(f"硅基流动API调用失败: {e}") from e
-# grok實現
-class GrokAdapter(BaseLLMAdapter):
-    """
-    适配 xAI Grok API
-    """
-    def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
-        self.base_url = check_base_url(base_url)
-        self.api_key = api_key
-        self.model_name = model_name
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.timeout = timeout
-
-        self._client = OpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            timeout=self.timeout
-        )
-
-    def invoke(self, prompt: str) -> str:
-        try:
-            response = self._client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": "You are Grok, created by xAI."},
-                    {"role": "user", "content": prompt},
-                ],
+            for chunk in _stream_openai_chat_completions(
+                self._stream_client,
+                model_name=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                timeout=self.timeout
-            )
-            if not response or not getattr(response, "choices", None):
-                raise RuntimeError("Grok API 未返回 choices。")
-            content = response.choices[0].message.content
-            if not content:
-                raise RuntimeError("Grok API 返回内容为空。")
-            return content
+                timeout=self.timeout,
+            ):
+                has_yielded = True
+                yield chunk
         except Exception as e:
-            logging.exception("Grok API 调用失败")
-            raise RuntimeError(f"Grok API 调用失败: {e}") from e
+            if has_yielded:
+                logging.warning("OpenAI 流式调用中断，取消回退以避免文本重复：%s", e)
+                raise
+            logging.warning("OpenAI 流式调用失败，回退 invoke：%s", e)
+            yield self.invoke(prompt)
+
 
 def create_llm_adapter(
     interface_format: str,
@@ -343,31 +163,8 @@ def create_llm_adapter(
     api_key: str,
     temperature: float,
     max_tokens: int,
-    timeout: int
+    timeout: int,
 ) -> BaseLLMAdapter:
-    """
-    工厂函数：根据 interface_format 返回不同的适配器实例。
-    """
-    fmt = interface_format.strip().lower()
-    if fmt == "deepseek":
-        return DeepSeekAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)
-    elif fmt == "openai":
-        return OpenAIAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)
-    elif fmt == "azure openai":
-        return AzureOpenAIAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)
-    elif fmt == "azure ai":
-        return AzureAIAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)
-    elif fmt in ("ollama", "ml studio"):
-        raise ValueError("当前版本已移除本地模型接口（Ollama/ML Studio），请改用云端接口。")
-    elif fmt == "gemini":
-        return GeminiAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)
-    elif fmt == "阿里云百炼":
-        return OpenAIAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)
-    elif fmt == "火山引擎":
-        return VolcanoEngineAIAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)
-    elif fmt == "硅基流动":
-        return SiliconFlowAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)
-    elif fmt == "grok":
-        return GrokAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)
-    else:
-        raise ValueError(f"Unknown interface_format: {interface_format}")
+    # 保留 interface_format 入参以兼容现有调用，当前统一走 OpenAI 兼容协议。
+    _ = interface_format
+    return OpenAIAdapter(api_key, base_url, model_name, max_tokens, temperature, timeout)

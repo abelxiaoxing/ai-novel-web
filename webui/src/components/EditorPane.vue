@@ -221,6 +221,9 @@ const saveStatusClass = computed(() => {
     if (props.activeTask.status === "failed") {
       return "status-unsaved";
     }
+    if (props.activeTask.status === "cancelled") {
+      return "status-draft-pending";
+    }
     if (props.activeTask.status === "running" || props.activeTask.status === "pending") {
       return "status-saving";
     }
@@ -640,6 +643,7 @@ const statusLabel = (status: string) => {
     running: "进行中",
     success: "已完成",
     failed: "已失败",
+    cancelled: "已取消",
   };
   return map[status] ?? "未知状态";
 };

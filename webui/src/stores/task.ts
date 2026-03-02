@@ -69,7 +69,11 @@ export const useTaskStore = defineStore("tasks", {
             error: statusPayload.error,
             outputFiles: statusPayload.output_files ?? [],
           });
-          if (statusPayload.status === "success" || statusPayload.status === "failed") {
+          if (
+            statusPayload.status === "success" ||
+            statusPayload.status === "failed" ||
+            statusPayload.status === "cancelled"
+          ) {
             this.updateTask(taskId, { completedAt: Date.now() });
             this.clearPoller(taskId);
             this.closeStream(taskId);
@@ -115,7 +119,9 @@ export const useTaskStore = defineStore("tasks", {
       };
       stream.onerror = () => {
         const task = this.tasks.find((item) => item.id === taskId);
-        const isFinished = task ? task.status === "success" || task.status === "failed" : false;
+        const isFinished = task
+          ? task.status === "success" || task.status === "failed" || task.status === "cancelled"
+          : false;
         if (!isFinished) {
           this.appendLog(taskId, "日志流已断开。");
         }

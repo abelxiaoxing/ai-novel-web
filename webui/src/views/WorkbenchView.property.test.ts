@@ -7,6 +7,7 @@ import WorkbenchView from "./WorkbenchView.vue";
 import { useProjectStore } from "@/stores/project";
 import { useConfigStore } from "@/stores/config";
 import { useTaskStore } from "@/stores/task";
+import { useToastStore } from "@/stores/toast";
 import { useWorkflowStore } from "@/stores/workflow";
 import PromptModal from "@/components/PromptModal.vue";
 import { toPayloadNumber } from "@/composables/workbenchPayloadHelpers";
@@ -386,6 +387,72 @@ describe("WorkbenchView Properties", () => {
     await (wrapper.vm as any).runAction("draft");
 
     expect(mockGenerateDraft).toHaveBeenCalledTimes(1);
+
+    wrapper.unmount();
+  });
+
+  it("blocks finalize and batch requests while draft task is running", async () => {
+    const { wrapper } = mountWorkbench();
+    await waitForWorkbenchReady();
+
+    mockGenerateDraft.mockClear();
+    mockFinalizeChapter.mockClear();
+    mockGenerateBatch.mockClear();
+
+    await (wrapper.vm as any).runAction("draft");
+    await (wrapper.vm as any).runAction("finalize");
+    await (wrapper.vm as any).runAction("batch");
+
+    expect(mockGenerateDraft).toHaveBeenCalledTimes(1);
+    expect(mockFinalizeChapter).not.toHaveBeenCalled();
+    expect(mockGenerateBatch).not.toHaveBeenCalled();
+
+    wrapper.unmount();
+  });
+
+  it("cancels the current chapter generation task with the running task id", async () => {
+    const { wrapper } = mountWorkbench();
+    const taskStore = useTaskStore();
+    await waitForWorkbenchReady();
+
+    mockCancelTask.mockClear();
+
+    await (wrapper.vm as any).runAction("finalize");
+    const finalizeTaskId = taskStore.tasks.find((task) => task.label === "章节定稿")?.id;
+    expect(finalizeTaskId).toBeTruthy();
+
+    await (wrapper.vm as any).cancelCurrentGenerationTask();
+    expect(mockCancelTask).toHaveBeenCalledTimes(1);
+    expect(mockCancelTask).toHaveBeenCalledWith(finalizeTaskId);
+
+    wrapper.unmount();
+  });
+
+  it("treats cancelled batch task as info and resets batch state", async () => {
+    const { wrapper } = mountWorkbench();
+    const taskStore = useTaskStore();
+    const toastStore = useToastStore();
+    await waitForWorkbenchReady();
+
+    toastStore.clearAll();
+    (wrapper.vm as any).batchConfig = { start: 1, end: 3, delaySeconds: 0 };
+    await nextTick();
+
+    mockGenerateBatch.mockClear();
+    await (wrapper.vm as any).runAction("batch");
+    const batchTaskId = taskStore.tasks.find((task) => task.label === "批量生成")?.id;
+    expect(batchTaskId).toBeTruthy();
+    expect((wrapper.vm as any).batchRunning).toBe(true);
+
+    taskStore.updateTask(batchTaskId as string, { status: "cancelled", error: "任务已取消" });
+    await flushPromises();
+    await nextTick();
+
+    expect((wrapper.vm as any).batchRunning).toBe(false);
+    expect((wrapper.vm as any).batchCancelRequested).toBe(false);
+    expect((wrapper.vm as any).batchSummary).toBe("批量生成已取消。");
+    expect(toastStore.toasts[0]?.type).toBe("info");
+    expect(toastStore.toasts[0]?.message).toContain("批量生成已取消");
 
     wrapper.unmount();
   });

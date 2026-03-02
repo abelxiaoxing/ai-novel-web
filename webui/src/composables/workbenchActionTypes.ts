@@ -19,7 +19,7 @@ export type TaskActionMeta = {
 export type TerminalTask = {
   id: string;
   label: string;
-  status: "success" | "failed";
+  status: "success" | "failed" | "cancelled";
   handled?: boolean;
   outputFiles?: string[];
   error?: string;

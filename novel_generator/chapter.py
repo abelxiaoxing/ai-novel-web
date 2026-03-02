@@ -16,7 +16,12 @@ from prompt_definitions import (
     knowledge_search_prompt
 )
 from chapter_directory_parser import get_chapter_info_from_blueprint
-from novel_generator.common import invoke_with_cleaning, normalize_chapter_text
+from novel_generator.common import (
+    is_cancelled_exception,
+    invoke_with_cleaning_streaming,
+    normalize_chapter_text,
+    raise_if_cancelled,
+)
 from utils import read_file, clear_file_content, save_string_to_txt
 from novel_generator.vectorstore_utils import (
     get_relevant_context_from_vector_store,
@@ -56,13 +61,15 @@ def summarize_recent_chapters(
     novel_number: int,            # 新增参数
     chapter_info: dict,           # 新增参数
     next_chapter_info: dict,      # 新增参数
-    timeout: int = 900
+    timeout: int = 900,
+    should_cancel=None,
 ) -> str:  # 修改返回值类型为 str，不再是 tuple
     """
     根据前三章内容生成当前章节的精准摘要。
     如果解析失败，则返回空字符串。
     """
     try:
+        raise_if_cancelled(should_cancel)
         combined_text = "\n".join(chapters_text_list).strip()
         if not combined_text:
             return ""
@@ -106,7 +113,12 @@ def summarize_recent_chapters(
             next_chapter_plot_twist_level=next_chapter_info.get("plot_twist_level", "★☆☆☆☆")
         )
         
-        response_text = invoke_with_cleaning(llm_adapter, prompt)
+        response_text = invoke_with_cleaning_streaming(
+            llm_adapter,
+            prompt,
+            should_cancel=should_cancel,
+        )
+        raise_if_cancelled(should_cancel)
         summary = extract_summary_from_response(response_text)
         
         if not summary:
@@ -116,6 +128,8 @@ def summarize_recent_chapters(
         return summary[:2000]  # 限制摘要长度
         
     except Exception as e:
+        if is_cancelled_exception(e):
+            raise
         logging.error(f"Error in summarize_recent_chapters: {str(e)}")
         return ""
 
@@ -229,13 +243,15 @@ def get_filtered_knowledge_context(
     chapter_info: dict,
     retrieved_texts: list,
     max_tokens: int = 2048,
-    timeout: int = 900
+    timeout: int = 900,
+    should_cancel=None,
 ) -> str:
     """优化后的知识过滤处理"""
     if not retrieved_texts:
         return "（无相关知识库内容）"
 
     try:
+        raise_if_cancelled(should_cancel)
         processed_texts = apply_knowledge_rules(retrieved_texts, chapter_info.get('chapter_number', 0))
         llm_adapter = create_llm_adapter(
             interface_format=interface_format,
@@ -269,10 +285,17 @@ def get_filtered_knowledge_context(
             retrieved_texts="\n\n".join(formatted_texts) if formatted_texts else "（无检索结果）"
         )
         
-        filtered_content = invoke_with_cleaning(llm_adapter, prompt)
+        filtered_content = invoke_with_cleaning_streaming(
+            llm_adapter,
+            prompt,
+            should_cancel=should_cancel,
+        )
+        raise_if_cancelled(should_cancel)
         return filtered_content if filtered_content else "（知识内容过滤失败）"
         
     except Exception as e:
+        if is_cancelled_exception(e):
+            raise
         logging.error(f"Error in knowledge filtering: {str(e)}")
         return "（内容过滤过程出错）"
 
@@ -296,7 +319,8 @@ def build_chapter_prompt(
     embedding_retrieval_k: int = 2,
     interface_format: str = "openai",
     max_tokens: int = 2048,
-    timeout: int = 900
+    timeout: int = 900,
+    should_cancel=None,
 ) -> str:
     """
     构造当前章节的请求提示词（完整实现版）
@@ -305,6 +329,7 @@ def build_chapter_prompt(
     2. 新增内容重复检测机制
     3. 集成提示词应用规则
     """
+    raise_if_cancelled(should_cancel)
     # 读取基础文件
     arch_file = os.path.join(filepath, "Novel_architecture.txt")
     novel_architecture_text = read_file(arch_file)
@@ -342,6 +367,7 @@ def build_chapter_prompt(
 
     # 第一章特殊处理
     if novel_number == 1:
+        raise_if_cancelled(should_cancel)
         return first_chapter_draft_prompt.format(
             novel_number=novel_number,
             word_number=word_number,
@@ -376,10 +402,13 @@ def build_chapter_prompt(
             novel_number=novel_number,
             chapter_info=chapter_info,
             next_chapter_info=next_chapter_info,
-            timeout=timeout
+            timeout=timeout,
+            should_cancel=should_cancel,
         )
         logging.info("Summary generated successfully")
     except Exception as e:
+        if is_cancelled_exception(e):
+            raise
         logging.error(f"Error in summarize_recent_chapters: {str(e)}")
         short_summary = "（摘要生成失败）"
 
@@ -392,6 +421,7 @@ def build_chapter_prompt(
 
     # 知识库检索和处理
     try:
+        raise_if_cancelled(should_cancel)
         # 生成检索关键词
         llm_adapter = create_llm_adapter(
             interface_format=interface_format,
@@ -417,7 +447,12 @@ def build_chapter_prompt(
             time_constraint=time_constraint
         )
         
-        search_response = invoke_with_cleaning(llm_adapter, search_prompt)
+        search_response = invoke_with_cleaning_streaming(
+            llm_adapter,
+            search_prompt,
+            should_cancel=should_cancel,
+        )
+        raise_if_cancelled(should_cancel)
         keyword_groups = parse_search_keywords(search_response)
 
         # 执行向量检索
@@ -479,14 +514,18 @@ def build_chapter_prompt(
             chapter_info=chapter_info_for_filter,
             retrieved_texts=processed_contexts,
             max_tokens=max_tokens,
-            timeout=timeout
+            timeout=timeout,
+            should_cancel=should_cancel,
         )
         
     except Exception as e:
+        if is_cancelled_exception(e):
+            raise
         logging.error(f"知识处理流程异常：{str(e)}")
         filtered_context = "（知识库处理失败）"
 
     # 返回最终提示词
+    raise_if_cancelled(should_cancel)
     return next_chapter_draft_prompt.format(
         user_guidance=user_guidance if user_guidance else "无特殊指导",
         global_summary=global_summary_text,
@@ -538,12 +577,15 @@ def generate_chapter_draft(
     interface_format: str = "openai",
     max_tokens: int = 2048,
     timeout: int = 900,
-    custom_prompt_text: str = None
+    custom_prompt_text: str = None,
+    save_to_file: bool = True,
+    should_cancel=None,
 ) -> str:
     """
     生成章节草稿，支持自定义提示词
     """
     if custom_prompt_text is None:
+        raise_if_cancelled(should_cancel)
         prompt_text = build_chapter_prompt(
             api_key=api_key,
             base_url=base_url,
@@ -564,7 +606,8 @@ def generate_chapter_draft(
             embedding_retrieval_k=embedding_retrieval_k,
             interface_format=interface_format,
             max_tokens=max_tokens,
-            timeout=timeout
+            timeout=timeout,
+            should_cancel=should_cancel,
         )
     else:
         prompt_text = custom_prompt_text
@@ -582,13 +625,22 @@ def generate_chapter_draft(
         timeout=timeout
     )
 
-    chapter_content = normalize_chapter_text(invoke_with_cleaning(llm_adapter, prompt_text))
+    raise_if_cancelled(should_cancel)
+    chapter_content = normalize_chapter_text(
+        invoke_with_cleaning_streaming(
+            llm_adapter,
+            prompt_text,
+            should_cancel=should_cancel,
+        )
+    )
+    raise_if_cancelled(should_cancel)
     if not chapter_content.strip():
         logging.warning("Generated chapter draft is empty.")
-    chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
-    clear_file_content(chapter_file)
-    save_string_to_txt(chapter_content, chapter_file)
-    logging.info(f"[Draft] Chapter {novel_number} generated as a draft.")
+    if save_to_file:
+        chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
+        clear_file_content(chapter_file)
+        save_string_to_txt(chapter_content, chapter_file)
+        logging.info(f"[Draft] Chapter {novel_number} generated as a draft.")
     return chapter_content
 
 
@@ -613,12 +665,14 @@ def generate_chapter_draft_stream(
     interface_format: str = "openai",
     max_tokens: int = 2048,
     timeout: int = 900,
-    custom_prompt_text: str = None
+    custom_prompt_text: str = None,
+    should_cancel=None,
 ):
     """
     流式生成章节草稿，返回生成器
     """
     if custom_prompt_text is None:
+        raise_if_cancelled(should_cancel)
         prompt_text = build_chapter_prompt(
             api_key=api_key,
             base_url=base_url,
@@ -639,7 +693,8 @@ def generate_chapter_draft_stream(
             embedding_retrieval_k=embedding_retrieval_k,
             interface_format=interface_format,
             max_tokens=max_tokens,
-            timeout=timeout
+            timeout=timeout,
+            should_cancel=should_cancel,
         )
     else:
         prompt_text = custom_prompt_text
@@ -662,6 +717,7 @@ def generate_chapter_draft_stream(
 
     full_content = []
     for chunk in llm_adapter.stream(prompt_text):
+        raise_if_cancelled(should_cancel)
         full_content.append(chunk)
         yield chunk
 

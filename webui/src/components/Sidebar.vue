@@ -98,6 +98,7 @@ const statusLabel = (status: string) => {
     running: "进行中",
     success: "已完成",
     failed: "已失败",
+    cancelled: "已取消",
   };
   return map[status] ?? "未知状态";
 };
@@ -199,6 +200,10 @@ const statusLabel = (status: string) => {
 
 .task-log-row__status--success {
   background: rgba(46, 163, 92, 0.45);
+}
+
+.task-log-row__status--cancelled {
+  background: rgba(236, 161, 24, 0.45);
 }
 
 .task-log-empty {
