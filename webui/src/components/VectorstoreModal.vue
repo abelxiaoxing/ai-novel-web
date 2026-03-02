@@ -79,6 +79,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import ModalShell from "@/components/ModalShell.vue";
+import {
+  clearVectorStore,
+  deleteVectorstoreChapter,
+  getVectorstoreSummary,
+} from "@/api/vectorstore";
+import { getTaskStatus } from "@/api/tasks";
 import type { VectorstoreSummaryResponse, VectorstoreGroup } from "@/api/types";
 
 const props = defineProps<{
@@ -114,7 +120,6 @@ const loadSummary = async () => {
   loading.value = true;
   error.value = null;
   try {
-    const { getVectorstoreSummary } = await import("@/api/tasks");
     const result = await getVectorstoreSummary(props.projectId, props.embeddingConfigName);
     summary.value = result;
   } catch (e) {
@@ -126,7 +131,6 @@ const loadSummary = async () => {
 };
 
 const waitForTaskCompletion = async (taskId: string) => {
-  const { getTaskStatus } = await import("@/api/tasks");
   const startedAt = Date.now();
   while (true) {
     const statusPayload = await getTaskStatus(taskId);
@@ -153,7 +157,6 @@ const handleDeleteChapter = async (chapter: number | undefined) => {
 
   loading.value = true;
   try {
-    const { deleteVectorstoreChapter } = await import("@/api/tasks");
     const payload = await deleteVectorstoreChapter(props.projectId, chapter, props.embeddingConfigName);
     await waitForTaskCompletion(payload.task_id);
     emit("deleted-chapter", chapter);
@@ -172,7 +175,6 @@ const handleClearAll = async () => {
 
   loading.value = true;
   try {
-    const { clearVectorStore } = await import("@/api/tasks");
     const payload = await clearVectorStore(props.projectId);
     await waitForTaskCompletion(payload.task_id);
     emit("cleared");

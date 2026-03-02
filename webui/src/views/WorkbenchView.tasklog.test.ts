@@ -12,18 +12,26 @@ vi.mock("vue-router", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-vi.mock("@/api/tasks", () => ({
-  buildPrompt: vi.fn().mockResolvedValue({ task_id: "task-prompt" }),
-  cancelTask: vi.fn().mockResolvedValue(undefined),
-  consistencyCheck: vi.fn().mockResolvedValue({ task_id: "task-c" }),
+vi.mock("@/api/tasks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/tasks")>();
+  return {
+    ...actual,
+    buildPrompt: vi.fn().mockResolvedValue({ task_id: "task-prompt" }),
+    cancelTask: vi.fn().mockResolvedValue(undefined),
+    consistencyCheck: vi.fn().mockResolvedValue({ task_id: "task-c" }),
+    finalizeChapter: vi.fn().mockResolvedValue({ task_id: "task-f" }),
+    generateArchitecture: vi.fn().mockResolvedValue({ task_id: "task-a" }),
+    generateBlueprint: vi.fn().mockResolvedValue({ task_id: "task-b" }),
+    generateBatch: vi.fn().mockResolvedValue({ task_id: "task-batch" }),
+    generateDraft: vi.fn().mockResolvedValue({ task_id: "task-draft" }),
+    importKnowledge: vi.fn().mockResolvedValue({ task_id: "task-i" }),
+  };
+});
+
+vi.mock("@/api/vectorstore", () => ({
   clearVectorStore: vi.fn().mockResolvedValue({ task_id: "task-clear" }),
-  finalizeChapter: vi.fn().mockResolvedValue({ task_id: "task-f" }),
-  generateArchitecture: vi.fn().mockResolvedValue({ task_id: "task-a" }),
-  generateBlueprint: vi.fn().mockResolvedValue({ task_id: "task-b" }),
-  generateBatch: vi.fn().mockResolvedValue({ task_id: "task-batch" }),
-  generateDraft: vi.fn().mockResolvedValue({ task_id: "task-draft" }),
+  deleteVectorstoreChapter: vi.fn().mockResolvedValue({ task_id: "task-delete" }),
   getVectorstoreSummary: vi.fn().mockResolvedValue({ total_count: 0, groups: [] }),
-  importKnowledge: vi.fn().mockResolvedValue({ task_id: "task-i" }),
 }));
 
 vi.mock("@/api/projects", () => ({

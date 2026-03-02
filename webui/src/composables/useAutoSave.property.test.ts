@@ -4,6 +4,15 @@ import { mount } from "@vue/test-utils";
 import { ref, nextTick } from "vue";
 import { useAutoSave } from "./useAutoSave";
 
+type AutoSaveVm = {
+  content: string;
+  auto: {
+    saveStatus: {
+      value: string;
+    };
+  };
+};
+
 const createWrapper = (onSave: () => Promise<void>, debounceMs = 3000) => {
   return mount({
     template: "<div />",
@@ -32,9 +41,10 @@ describe("useAutoSave Properties", () => {
         async (first, second) => {
           const onSave = vi.fn().mockResolvedValue(undefined);
           const wrapper = createWrapper(onSave);
-          (wrapper.vm as { content: string }).content = first;
+          const vm = wrapper.vm as unknown as AutoSaveVm;
+          vm.content = first;
           await nextTick();
-          (wrapper.vm as { content: string }).content = second;
+          vm.content = second;
           await nextTick();
 
           expect(onSave).not.toHaveBeenCalled();
@@ -55,11 +65,12 @@ describe("useAutoSave Properties", () => {
       fc.asyncProperty(fc.string({ minLength: 1, maxLength: 20 }), async (nextValue) => {
         const onSave = vi.fn().mockResolvedValue(undefined);
         const wrapper = createWrapper(onSave);
+        const vm = wrapper.vm as unknown as AutoSaveVm;
 
-        const auto = (wrapper.vm as { auto: { saveStatus: { value: string } } }).auto;
+        const auto = vm.auto;
         expect(auto.saveStatus.value).toBe("saved");
 
-        (wrapper.vm as { content: string }).content = nextValue;
+        vm.content = nextValue;
         await nextTick();
         expect(auto.saveStatus.value).toBe("unsaved");
 

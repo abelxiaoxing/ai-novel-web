@@ -199,7 +199,7 @@ export const useWorkflowStore = defineStore("workflow", {
      * Check if current chapter needs re-finalization
      */
     isCurrentChapterNeedsReFinalization(): boolean {
-      return this.needsReFinalization()(this.currentChapter);
+      return this.needsReFinalization(this.currentChapter);
     },
 
     /**
@@ -242,6 +242,43 @@ export const useWorkflowStore = defineStore("workflow", {
         ...this.chapterStatuses,
         [chapter]: { status, deletedFromVectorstore: false },
       };
+    },
+
+    /**
+     * Replace all chapter statuses
+     */
+    replaceChapterStatuses(statuses: Record<number, ChapterState>): void {
+      this.chapterStatuses = { ...statuses };
+    },
+
+    syncBaseSteps(payload: { hasArchitecture?: boolean; hasBlueprint?: boolean }): void {
+      const nextCompleted: WorkflowStep[] = this.completedSteps.filter((step) => step === "draft");
+      if (payload.hasArchitecture) {
+        nextCompleted.push("architecture");
+      }
+      if (payload.hasBlueprint) {
+        nextCompleted.push("blueprint");
+      }
+      this.completedSteps = nextCompleted;
+      this.hasArchitecture = Boolean(payload.hasArchitecture);
+      this.hasBlueprint = Boolean(payload.hasBlueprint);
+      const nextStep = this.nextStep;
+      if (nextStep) {
+        this.currentStep = nextStep;
+      }
+    },
+
+    syncCurrentDraftStep(): void {
+      const status = this.chapterStatuses[this.currentChapter]?.status;
+      const hasCurrentChapterDraft = status === "draft-pending" || status === "finalized";
+      const hasDraftStep = this.completedSteps.includes("draft");
+      if (hasCurrentChapterDraft && !hasDraftStep) {
+        this.completedSteps = [...this.completedSteps, "draft"];
+        this.currentStep = "draft";
+      }
+      if (!hasCurrentChapterDraft && hasDraftStep) {
+        this.completedSteps = this.completedSteps.filter((step) => step !== "draft");
+      }
     },
 
     /**
@@ -399,60 +436,6 @@ export const useWorkflowStore = defineStore("workflow", {
         return true;
       }
       return false; // Already at last chapter
-    },
-
-    /**
-     * Initialize workflow state from project data
-     */
-    initializeFromProject(projectData: {
-      hasArchitecture?: boolean;
-      hasBlueprint?: boolean;
-      hasDraft?: boolean;
-      hasFinalize?: boolean;
-      totalChapters?: number;
-      currentChapter?: number;
-      chapterStatuses?: Record<number, ChapterState>;
-    }): void {
-      const hasDraft = projectData.hasDraft ?? false;
-      const hasFinalize = projectData.hasFinalize ?? false;
-      const hasBlueprint = projectData.hasBlueprint ?? false;
-      const hasArchitecture = projectData.hasArchitecture ?? false;
-
-      this.hasBlueprint = hasBlueprint || hasDraft || hasFinalize;
-      this.hasArchitecture = hasArchitecture || this.hasBlueprint;
-      this.totalChapters = projectData.totalChapters ?? 10;
-      this.currentChapter = projectData.currentChapter ?? 1;
-
-      // Restore chapter statuses if provided
-      if (projectData.chapterStatuses) {
-        this.chapterStatuses = { ...projectData.chapterStatuses };
-      }
-
-      // Rebuild completed steps based on flags
-      this.completedSteps = [];
-      if (this.hasArchitecture) {
-        this.completedSteps.push("architecture");
-      }
-      if (this.hasBlueprint) {
-        this.completedSteps.push("blueprint");
-      }
-      // 只有当前章节有草稿（状态为 draft-pending 或 finalized）时，才将 draft 添加到 completedSteps
-      const currentChapterStatus = this.chapterStatuses[this.currentChapter];
-      const hasCurrentChapterDraft = currentChapterStatus &&
-        (currentChapterStatus.status === "draft-pending" || currentChapterStatus.status === "finalized");
-      if (hasCurrentChapterDraft) {
-        this.completedSteps.push("draft");
-      }
-
-      // Set current step to the next available
-      const nextStep = this.nextStep;
-      if (nextStep) {
-        this.currentStep = nextStep;
-      } else if (this.completedSteps.length) {
-        this.currentStep = WORKFLOW_STEPS[WORKFLOW_STEPS.length - 1].key;
-      } else {
-        this.currentStep = "architecture";
-      }
     },
 
     /**

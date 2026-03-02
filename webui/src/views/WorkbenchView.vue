@@ -59,7 +59,7 @@
         :form="form"
         :right-panel-visible="panelStore.rightPanel"
         @update:form="handleFormUpdate"
-        @run="runAction"
+        @run="(action: WorkbenchAction) => runAction(action)"
         @next-chapter="handleNextChapter"
         @import-knowledge="handleKnowledgeImport"
         @manage-vectorstore="handleVectorstoreManage"
@@ -95,10 +95,11 @@ import EditorPane from "@/components/EditorPane.vue";
 import GlobalProgressBar from "@/components/GlobalProgressBar.vue";
 import PromptModal from "@/components/PromptModal.vue";
 import VectorstoreModal from "@/components/VectorstoreModal.vue";
-import RightPanel, { type WorkbenchForm } from "@/components/RightPanel.vue";
+import RightPanel from "@/components/RightPanel.vue";
 import Sidebar from "@/components/Sidebar.vue";
 import TopBar from "@/components/TopBar.vue";
-import type { ProjectState, WorkbenchFormState, WorkflowSnapshot, BatchTaskState } from "@/api/types";
+import type { ProjectState, WorkbenchFormState, WorkflowSnapshot } from "@/api/types";
+import type { WorkbenchForm } from "@/composables/workbenchFormTypes";
 import type { ChapterState } from "@/stores/workflow";
 import {
   downloadProjectExport,
@@ -114,19 +115,10 @@ import { useToastStore } from "@/stores/toast";
 import { useWorkflowStore } from "@/stores/workflow";
 import { usePanelStore } from "@/stores/panel";
 import { useChapterInfo } from "@/composables/useChapterInfo";
-import {
-  buildPrompt,
-  cancelTask,
-  consistencyCheck,
-  clearVectorStore,
-  finalizeChapter,
-  generateArchitecture,
-  generateBlueprint,
-  generateBatch,
-  generateDraft,
-  getVectorstoreSummary,
-  importKnowledge,
-} from "@/api/tasks";
+import { useWorkbenchActions } from "@/composables/useWorkbenchActions";
+import type { TaskActionMeta, TerminalTask, WorkbenchAction } from "@/composables/workbenchActionTypes";
+import { importKnowledge } from "@/api/tasks";
+import { getVectorstoreSummary } from "@/api/vectorstore";
 
 const route = useRoute();
 const router = useRouter();
@@ -141,14 +133,14 @@ const promptModalOpen = ref(false);
 const promptText = ref("");
 const vectorstoreModalOpen = ref(false);
 const pendingPromptTask = ref<string | null>(null);
-const handledTasks = ref(new Set<string>());
+const stepToastMap: Record<string, string> = {
+  architecture: "架构已完成，下一步生成章节蓝图。",
+  blueprint: "蓝图已完成，下一步生成章节草稿。",
+  draft: "章节草稿已生成，请确认内容后点击「确认定稿」。",
+  finalize: "章节已定稿，可以继续生成下一章。",
+};
 const stateLoaded = ref(false);
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-type TaskActionMeta = {
-  action: string;
-  chapterNumber?: number;
-};
-const taskActionMap = new Map<string, TaskActionMeta>();
 
 const form = reactive<WorkbenchForm>({
   topic: "",
@@ -773,15 +765,14 @@ const syncWorkflowFromProject = async (
       ? totalChapters
       : workflowStore.totalChapters;
 
-  workflowStore.initializeFromProject({
+  workflowStore.syncBaseSteps({
     hasArchitecture: normalizedHasArchitecture,
     hasBlueprint: normalizedHasBlueprint,
-    hasDraft,
-    hasFinalize,
-    totalChapters: resolvedTotalChapters,
-    currentChapter,
-    chapterStatuses,
   });
+  workflowStore.setTotalChapters(resolvedTotalChapters);
+  workflowStore.setCurrentChapter(currentChapter);
+  workflowStore.replaceChapterStatuses(chapterStatuses);
+  workflowStore.syncCurrentDraftStep();
   return updated;
 };
 
@@ -882,7 +873,7 @@ const loadProjectState = async () => {
         total: Math.max(0, state.batchTask.end - state.batchTask.start + 1),
       };
       batchRunning.value = true;
-      taskActionMap.set(state.batchTask.taskId, { action: "batch" });
+      setTaskActionMeta(state.batchTask.taskId, { action: "batch" });
       parseBatchProgress(existingTask.logs);
     }
   }
@@ -1034,251 +1025,129 @@ const buildBatchSummary = (task: { result?: Record<string, unknown> | null }) =>
   return "批量生成完成。";
 };
 
-const runTask = async (
-  label: string,
-  apiCall: () => Promise<{ task_id: string }>,
-  actionMeta?: TaskActionMeta
-) => {
-  try {
-    const payload = await apiCall();
-    taskStore.registerTask(payload.task_id, label);
-    if (actionMeta) {
-      taskActionMap.set(payload.task_id, actionMeta);
+const handleTerminalTask = async ({
+  task,
+  actionMeta,
+}: {
+  task: TerminalTask;
+  actionMeta?: TaskActionMeta;
+}) => {
+
+  const action = actionMeta?.action;
+  const actionChapter = actionMeta?.chapterNumber;
+  const actionSessionId = actionMeta?.sessionId;
+  const ignoreStalePreFinalizeSuccess =
+    task.status === "success" &&
+    action === "finalize" &&
+    !isPreFinalizeSessionValid(actionSessionId);
+
+  if (ignoreStalePreFinalizeSuccess) {
+    return;
+  }
+
+  if (task.status === "success") {
+    await projectStore.refreshFileTree();
+    const outputFile = task.outputFiles?.[0];
+    if (outputFile) {
+      await openOutputFile(outputFile);
     }
-    return payload.task_id;
-  } catch (error) {
-    projectStore.error = error instanceof Error ? error.message : "任务执行失败";
-    return null;
-  }
-};
-
-const startBatchDirect = () => {
-  const defaults = batchDefaults.value;
-  startBatch({ start: defaults.start, end: defaults.end, delaySeconds: batchConfig.value.delaySeconds });
-};
-
-const startBatch = async (payload: { start: number; end: number; delaySeconds: number }) => {
-  const projectId = projectStore.currentProject?.id;
-  if (!projectId) {
-    return;
   }
 
-  // 如果当前章节有未定稿的草稿，先自动定稿
-  if (workflowStore.hasPendingDraft) {
-    toastStore.info("当前章节有未定稿草稿，正在自动定稿...");
-    const finalizeTaskId = await runTask(
-      "自动定稿",
-      () =>
-        finalizeChapter(projectId, {
-          novel_number: workflowStore.currentChapter,
-          word_number: Number(form.wordNumber),
-          llm_config_name: configStore.chooseConfigs.finalize_llm || form.llmConfigName || undefined,
-          embedding_config_name: form.embeddingConfigName || configStore.chooseConfigs.embedding || undefined,
-        }),
-      { action: "finalize", chapterNumber: workflowStore.currentChapter }
-    );
-    if (finalizeTaskId) {
-      // 等待定稿完成后再继续批量生成
-      const checkInterval = setInterval(() => {
-        const task = taskStore.tasks.find(t => t.id === finalizeTaskId);
-        if (task && (task.status === "success" || task.status === "failed")) {
-          clearInterval(checkInterval);
-          if (task.status === "success") {
-            // 定稿成功后继续批量生成
-            executeBatchGeneration(projectId, payload);
-          } else {
-            toastStore.error("自动定稿失败，已取消批量生成");
-            batchRunning.value = false;
-          }
-        }
-      }, 500);
+  const currentChapter = workflowStore.currentChapter;
+  if (task.status === "success") {
+    if (action === "architecture" || action === "blueprint") {
+      workflowStore.completeStep(action);
     }
-    return;
-  }
-
-  // 直接执行批量生成
-  executeBatchGeneration(projectId, payload);
-};
-
-const executeBatchGeneration = async (projectId: string, payload: { start: number; end: number; delaySeconds: number }) => {
-  const choose = configStore.chooseConfigs;
-  const resolveLlm = (fallback?: string) => form.llmConfigName || fallback || undefined;
-  const resolveEmbedding = () => form.embeddingConfigName || choose.embedding || undefined;
-  batchSummary.value = "";
-  batchError.value = "";
-  batchRunning.value = true;
-  batchCancelRequested.value = false;
-  batchConfig.value = payload;
-  batchProgress.value = {
-    current: 0,
-    total: Math.max(0, payload.end - payload.start + 1),
-  };
-  const taskId = await runTask(
-    "批量生成",
-    () =>
-      generateBatch(projectId, {
-        start_chapter: payload.start,
-        end_chapter: payload.end,
-        delay_seconds: payload.delaySeconds,
-        word_number: Number(form.wordNumber),
-        characters_involved: form.charactersInvolved,
-        key_items: form.keyItems,
-        scene_location: form.sceneLocation,
-        time_constraint: form.timeConstraint,
-        user_guidance: form.userGuidance,
-        llm_config_name: resolveLlm(choose.prompt_draft_llm),
-        embedding_config_name: resolveEmbedding(),
-      }),
-    { action: "batch" }
-  );
-  if (!taskId) {
-    batchRunning.value = false;
-    return;
-  }
-  batchTaskId.value = taskId;
-  queueSaveState();
-};
-
-const cancelBatch = async () => {
-  if (!batchTaskId.value || batchCancelRequested.value) {
-    return;
-  }
-  batchCancelRequested.value = true;
-  try {
-    await cancelTask(batchTaskId.value);
-  } catch (error) {
-    batchCancelRequested.value = false;
-    batchError.value = error instanceof Error ? error.message : "取消失败";
-  }
-};
-
-const runAction = async (action: string) => {
-  const projectId = projectStore.currentProject?.id;
-  if (!projectId) {
-    return;
-  }
-  const choose = configStore.chooseConfigs;
-  const resolveLlm = (fallback?: string) => form.llmConfigName || fallback || undefined;
-  const resolveEmbedding = () => form.embeddingConfigName || choose.embedding || undefined;
-  const payloadBase = {
-    novel_number: Number(form.chapterNumber),
-    word_number: Number(form.wordNumber),
-    characters_involved: form.charactersInvolved,
-    key_items: form.keyItems,
-    scene_location: form.sceneLocation,
-    time_constraint: form.timeConstraint,
-    user_guidance: form.userGuidance,
-    llm_config_name: resolveLlm(choose.prompt_draft_llm),
-    embedding_config_name: resolveEmbedding(),
-  };
-
-  switch (action) {
-    case "architecture":
-      await runTask(
-        "生成架构",
-        () =>
-          generateArchitecture(projectId, {
-            topic: form.topic,
-            genre: form.genre,
-            number_of_chapters: Number(form.numberOfChapters),
-            word_number: Number(form.wordNumber),
-            user_guidance: form.userGuidance,
-            llm_config_name: resolveLlm(choose.architecture_llm),
-          }),
-        { action: "architecture" }
-      );
-      break;
-    case "blueprint":
-      await runTask(
-        "生成章节蓝图",
-        () =>
-          generateBlueprint(projectId, {
-            number_of_chapters: Number(form.numberOfChapters),
-            user_guidance: form.userGuidance,
-            llm_config_name: resolveLlm(choose.chapter_outline_llm),
-          }),
-        { action: "blueprint" }
-      );
-      break;
-    case "preview-prompt": {
-      const taskId = await runTask(
-        "预览提示词",
-        () => buildPrompt(projectId, payloadBase),
-        { action: "preview-prompt", chapterNumber: payloadBase.novel_number }
-      );
-      if (taskId) {
-        pendingPromptTask.value = taskId;
+    if (action === "draft") {
+      const targetChapter = typeof actionChapter === "number" ? actionChapter : currentChapter;
+      workflowStore.markChapterDraftPending(targetChapter);
+      queueSaveState();
+    }
+    if (action === "finalize") {
+      if (!isPreFinalizeSessionValid(actionSessionId)) {
+        return;
       }
-      break;
+      const targetChapter = typeof actionChapter === "number" ? actionChapter : currentChapter;
+      workflowStore.markChapterFinalized(targetChapter);
+      queueSaveState();
+      if (targetChapter === currentChapter) {
+        advanceChapter(false);
+      }
     }
-    case "batch":
-      startBatchDirect();
-      break;
-    case "draft":
-      await runTask(
-        "生成草稿",
-        () => generateDraft(projectId, payloadBase),
-        { action: "draft", chapterNumber: payloadBase.novel_number }
-      );
-      break;
-    case "finalize":
-      await runTask(
-        "章节定稿",
-        () =>
-          finalizeChapter(projectId, {
-            novel_number: Number(form.chapterNumber),
-            word_number: Number(form.wordNumber),
-            llm_config_name: resolveLlm(choose.finalize_llm),
-            embedding_config_name: resolveEmbedding(),
-          }),
-        { action: "finalize", chapterNumber: payloadBase.novel_number }
-      );
-      break;
-    case "consistency":
-      await runTask(
-        "一致性检查",
-        () =>
-          consistencyCheck(projectId, {
-            novel_setting: "",
-            character_state: "",
-            global_summary: "",
-            chapter_text: projectStore.editorContent,
-            llm_config_name: resolveLlm(choose.consistency_llm),
-          }),
-        { action: "consistency", chapterNumber: payloadBase.novel_number }
-      );
-      break;
-    default:
-      break;
+    if (action === "blueprint") {
+      await loadBlueprintContent();
+    }
+    if (action === "batch") {
+      batchRunning.value = false;
+      batchCancelRequested.value = false;
+      batchProgress.value.current = batchProgress.value.total;
+      batchSummary.value = buildBatchSummary(task);
+      const batchEnd = batchConfig.value?.end ?? 0;
+      if (batchEnd > 0) {
+        workflowStore.setCurrentChapter(batchEnd + 1);
+        form.chapterNumber = String(workflowStore.currentChapter);
+        clearChapterFields();
+      }
+      await syncWorkflowFromProject({ checkVectorstore: true });
+      queueSaveState();
+    }
+    if (action && stepToastMap[action]) {
+      toastStore.success(stepToastMap[action]);
+    } else {
+      toastStore.success(`${task.label}完成`);
+    }
+    return;
   }
+
+  const message = task.error ? `${task.label}失败：${task.error}` : `${task.label}失败`;
+  if (action === "batch") {
+    await projectStore.refreshFileTree();
+    batchRunning.value = false;
+    batchCancelRequested.value = false;
+    if (task.error && task.error.includes("取消")) {
+      batchSummary.value = "批量生成已取消。";
+      batchError.value = "";
+    } else {
+      batchError.value = task.error ?? "批量生成失败。";
+    }
+    queueSaveState();
+  }
+  toastStore.error(message);
 };
+
+const {
+  runTask,
+  runAction,
+  usePrompt: runPromptWithCustomText,
+  cancelBatch,
+  processTerminalTasks,
+  setTaskActionMeta,
+  getPendingPromptTaskId,
+  clearPendingPromptTask,
+  isPreFinalizeSessionValid,
+} = useWorkbenchActions({
+  form,
+  configStore,
+  projectStore,
+  taskStore,
+  toastStore,
+  workflowStore,
+  pendingPromptTask,
+  batchRunning,
+  batchCancelRequested,
+  batchProgress,
+  batchSummary,
+  batchError,
+  batchTaskId,
+  batchConfig,
+  getBatchDefaults: () => batchDefaults.value,
+  onQueueSaveState: queueSaveState,
+  onTaskHandled: handleTerminalTask,
+});
 
 const usePrompt = async (value: string) => {
   promptModalOpen.value = false;
-  const projectId = projectStore.currentProject?.id;
-  if (!projectId) {
-    return;
-  }
-  const choose = configStore.chooseConfigs;
-  const resolveLlm = (fallback?: string) => form.llmConfigName || fallback || undefined;
-  const resolveEmbedding = () => form.embeddingConfigName || choose.embedding || undefined;
-  await runTask(
-    "生成草稿",
-    () =>
-      generateDraft(projectId, {
-        novel_number: Number(form.chapterNumber),
-        word_number: Number(form.wordNumber),
-        characters_involved: form.charactersInvolved,
-        key_items: form.keyItems,
-        scene_location: form.sceneLocation,
-        time_constraint: form.timeConstraint,
-        user_guidance: form.userGuidance,
-        llm_config_name: resolveLlm(choose.prompt_draft_llm),
-        embedding_config_name: resolveEmbedding(),
-        custom_prompt_text: value,
-      }),
-    { action: "draft", chapterNumber: Number(form.chapterNumber) }
-  );
+  await runPromptWithCustomText(value);
 };
 
 const handleKnowledgeImport = async (file: File) => {
@@ -1338,7 +1207,7 @@ const handleFileDelete = async (node: FileNode) => {
     if (workflowStore.chapterStatuses[node.chapterNumber]) {
       const nextStatuses = { ...workflowStore.chapterStatuses };
       delete nextStatuses[node.chapterNumber];
-      workflowStore.chapterStatuses = nextStatuses;
+      workflowStore.replaceChapterStatuses(nextStatuses);
       queueSaveState();
     }
     toastStore.success(`已删除第 ${node.chapterNumber} 章`);
@@ -1376,7 +1245,7 @@ const handleFileRename = async (payload: { node: FileNode; name: string }) => {
       const nextStatuses = { ...workflowStore.chapterStatuses };
       delete nextStatuses[node.chapterNumber];
       nextStatuses[nextNumber] = currentStatuses;
-      workflowStore.chapterStatuses = nextStatuses;
+      workflowStore.replaceChapterStatuses(nextStatuses);
       queueSaveState();
     }
     toastStore.success(`章节已重命名为第 ${nextNumber} 章`);
@@ -1386,117 +1255,45 @@ const handleFileRename = async (payload: { node: FileNode; name: string }) => {
 };
 
 watch(
-  () => taskStore.tasks,
+  () => taskStore.tasks.map((task) => `${task.id}:${task.status}:${task.handled === true ? 1 : 0}`),
   async () => {
-    for (const task of taskStore.tasks) {
-      if (
-        (task.status === "success" || task.status === "failed") &&
-        !handledTasks.value.has(task.id)
-      ) {
-        handledTasks.value.add(task.id);
-        const actionMeta = taskActionMap.get(task.id);
-        const action = actionMeta?.action;
-        const actionChapter = actionMeta?.chapterNumber;
-        if (task.status === "success") {
-          await projectStore.refreshFileTree();
-          const outputFile = task.outputFiles?.[0];
-          if (outputFile) {
-            await openOutputFile(outputFile);
-          }
-        }
-        const currentChapter = workflowStore.currentChapter;
-        if (task.status === "success") {
-          // 只处理在 WORKFLOW_STEPS 中的步骤
-          if (action === "architecture" || action === "blueprint") {
-            workflowStore.completeStep(action);
-          }
-          // 草稿完成后按任务所属章节写回状态
-          if (action === "draft") {
-            const targetChapter =
-              typeof actionChapter === "number" ? actionChapter : currentChapter;
-            workflowStore.markChapterDraftPending(targetChapter);
-            queueSaveState();
-          }
-          // 定稿完成 - 不再是 workflow step，单独处理
-          if (action === "finalize") {
-            const targetChapter =
-              typeof actionChapter === "number" ? actionChapter : currentChapter;
-            workflowStore.markChapterFinalized(targetChapter);
-            queueSaveState();
-            // 仅当当前焦点章节完成定稿时自动跳转到下一章
-            if (targetChapter === currentChapter) {
-              advanceChapter(false);
-            }
-          }
-          if (action === "blueprint") {
-            await loadBlueprintContent();
-          }
-          // 批量生成完成后切换章节到最后一章+1
-          if (action === "batch") {
-            batchRunning.value = false;
-            batchCancelRequested.value = false;
-            batchProgress.value.current = batchProgress.value.total;
-            batchSummary.value = buildBatchSummary(task);
-            // 切换到批量生成的最后一章的下一章
-            const batchEnd = batchConfig.value?.end ?? 0;
-            if (batchEnd > 0) {
-              workflowStore.setCurrentChapter(batchEnd + 1);
-              form.chapterNumber = String(workflowStore.currentChapter);
-              clearChapterFields();
-            }
-            await syncWorkflowFromProject({ checkVectorstore: true });
-            queueSaveState();
-          }
-          const stepToastMap: Record<string, string> = {
-            architecture: "架构已完成，下一步生成章节蓝图。",
-            blueprint: "蓝图已完成，下一步生成章节草稿。",
-            draft: "章节草稿已生成，请确认内容后点击「确认定稿」。",
-            finalize: "章节已定稿，可以继续生成下一章。",
-          };
-          if (action && stepToastMap[action]) {
-            toastStore.success(stepToastMap[action]);
-          } else {
-            toastStore.success(`${task.label}完成`);
-          }
-        } else {
-          const message = task.error ? `${task.label}失败：${task.error}` : `${task.label}失败`;
-          if (action === "batch") {
-            await projectStore.refreshFileTree();
-            batchRunning.value = false;
-            batchCancelRequested.value = false;
-            if (task.error && task.error.includes("取消")) {
-              batchSummary.value = "批量生成已取消。";
-              batchError.value = "";
-            } else {
-              batchError.value = task.error ?? "批量生成失败。";
-            }
-            queueSaveState();
-          }
-          toastStore.error(message);
-        }
-        if (action) {
-          taskActionMap.delete(task.id);
-        }
-      }
+    await processTerminalTasks();
+  }
+);
+
+watch(
+  () => {
+    const pendingPromptId = getPendingPromptTaskId();
+    if (!pendingPromptId) {
+      return null;
     }
-    if (!pendingPromptTask.value) {
-      return;
-    }
-    const task = taskStore.tasks.find((item) => item.id === pendingPromptTask.value);
-    if (!task || task.status !== "success") {
-      if (task?.status === "failed") {
-        pendingPromptTask.value = null;
-      }
-      return;
+    const task = taskStore.tasks.find((item) => item.id === pendingPromptId);
+    if (!task) {
+      return { status: "missing", prompt: null as string | null };
     }
     const prompt = task.result?.prompt_text;
-    if (typeof prompt === "string") {
-      promptText.value = prompt;
+    return {
+      status: task.status,
+      prompt: typeof prompt === "string" ? prompt : null,
+    };
+  },
+  (state) => {
+    if (!state) {
+      return;
+    }
+    if (state.status === "failed" || state.status === "missing") {
+      clearPendingPromptTask();
+      return;
+    }
+    if (state.status !== "success") {
+      return;
+    }
+    if (state.prompt) {
+      promptText.value = state.prompt;
       promptModalOpen.value = true;
     }
-    pendingPromptTask.value = null;
-  },
-  { deep: true }
+    clearPendingPromptTask();
+  }
 );
 
 watch(

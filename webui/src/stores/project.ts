@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import type { Project } from "@/api/types";
+import type { FileEntry, Project } from "@/api/types";
 import {
   createProject,
   deleteProject,
@@ -105,6 +105,16 @@ function buildChapterNodes(chapters: number[]): FileNode {
   };
 }
 
+function mapEntryToFileNode(entry: FileEntry): FileNode {
+  return {
+    id: entry.path,
+    name: entry.name,
+    path: entry.path,
+    type: entry.type ?? "file",
+    children: entry.children?.map(mapEntryToFileNode),
+  };
+}
+
 export const useProjectStore = defineStore("project", {
   state: () => ({
     projects: [] as Project[],
@@ -188,11 +198,7 @@ export const useProjectStore = defineStore("project", {
           filesPayload.entries &&
           filesPayload.entries.length > 0
         ) {
-          tree = filesPayload.entries.map((entry) => ({
-            ...entry,
-            id: entry.path,
-            type: entry.type ?? "file",
-          }));
+          tree = filesPayload.entries.map(mapEntryToFileNode);
         } else {
           const fileList = Array.isArray(filesPayload)
             ? filesPayload

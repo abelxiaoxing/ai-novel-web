@@ -183,24 +183,10 @@ import { computed, ref, watch, toRefs } from "vue";
 import { useWorkflowStore, type WorkflowStep } from "@/stores/workflow";
 import { usePanelStore } from "@/stores/panel";
 import { useResizable } from "@/composables/useResizable";
+import type { WorkbenchAction } from "@/composables/workbenchActionTypes";
+import type { WorkbenchForm } from "@/composables/workbenchFormTypes";
 import StepIndicator from "./StepIndicator.vue";
 import HelpTooltip from "./HelpTooltip.vue";
-
-export type WorkbenchForm = {
-  topic: string;
-  genre: string;
-  numberOfChapters: string;
-  wordNumber: string;
-  userGuidance: string;
-  chapterNumber: string;
-  charactersInvolved: string;
-  keyItems: string;
-  sceneLocation: string;
-  timeConstraint: string;
-  llmConfigName: string;
-  embeddingConfigName: string;
-  batchEndChapter: string;
-};
 
 const props = defineProps<{
   form: WorkbenchForm;
@@ -209,7 +195,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: "update:form", payload: WorkbenchForm): void;
-  (event: "run", action: string): void;
+  (event: "run", action: WorkbenchAction): void;
   (event: "next-chapter"): void;
   (event: "import-knowledge", file: File): void;
   (event: "manage-vectorstore"): void;
