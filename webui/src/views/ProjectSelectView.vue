@@ -1,6 +1,5 @@
 <template>
-  <div class="project-view">
-    <SpaceBackground />
+  <div class="project-view" :style="pageStyleVars">
 
     <!-- 顶部标题区域 -->
     <header class="hero-section fade-in-up">
@@ -78,6 +77,38 @@
             <option value="created_at">创建时间</option>
             <option value="updated_at">更新时间</option>
           </select>
+        </div>
+      </div>
+
+      <div class="theme-wrapper">
+        <div class="sort-field">
+          <label class="sort-label">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v3"/>
+              <path d="M12 19v3"/>
+              <path d="M4.93 4.93l2.12 2.12"/>
+              <path d="M16.95 16.95l2.12 2.12"/>
+              <path d="M2 12h3"/>
+              <path d="M19 12h3"/>
+              <path d="M4.93 19.07l2.12-2.12"/>
+              <path d="M16.95 7.05l2.12-2.12"/>
+            </svg>
+            <span>色调</span>
+          </label>
+          <div class="theme-options" role="radiogroup" aria-label="主页色调选择">
+            <button
+              v-for="theme in projectThemes"
+              :key="theme.key"
+              type="button"
+              class="theme-option"
+              :class="{ active: selectedTheme === theme.key }"
+              @click="chooseTheme(theme.key)"
+            >
+              <span class="theme-dot" :style="{ background: theme.preview }"></span>
+              <span class="theme-name">{{ theme.label }}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -164,9 +195,210 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useProjectStore } from "@/stores/project";
 import { useToastStore } from "@/stores/toast";
-import SpaceBackground from "@/components/SpaceBackground.vue";
 import ProjectCard from "@/components/ProjectCard.vue";
 import CreateProjectModal from "@/components/CreateProjectModal.vue";
+
+type ProjectTheme = {
+  key: string;
+  label: string;
+  preview: string;
+  vars: Record<string, string>;
+};
+
+const projectThemes: ProjectTheme[] = [
+  {
+    key: "snow",
+    label: "雪白",
+    preview: "linear-gradient(135deg, #ffffff, #edf6ff)",
+    vars: {
+      "--page-bg-start": "#ffffff",
+      "--page-bg-end": "#f8fbff",
+      "--page-spot-1": "rgba(124, 181, 255, 0.18)",
+      "--page-spot-2": "rgba(127, 225, 255, 0.16)",
+      "--text": "#10223d",
+      "--text-muted": "#5f7088",
+      "--accent": "#2f7eed",
+      "--accent-bright": "#1b65d0",
+      "--accent-muted": "rgba(47, 126, 237, 0.14)",
+      "--panel-veil": "rgba(255, 255, 255, 0.88)",
+      "--panel-veil-strong": "rgba(255, 255, 255, 0.96)",
+      "--panel-border": "rgba(95, 148, 214, 0.26)",
+      "--panel-border-strong": "rgba(54, 116, 197, 0.55)",
+      "--hud-line-soft": "rgba(83, 146, 224, 0.45)",
+      "--card-surface-start": "#ffffff",
+      "--card-surface-end": "#f6faff",
+      "--card-border": "rgba(96, 149, 215, 0.24)",
+      "--card-border-strong": "rgba(62, 125, 201, 0.52)",
+      "--card-border-soft": "rgba(96, 149, 215, 0.14)",
+      "--card-glow": "rgba(120, 183, 255, 0.18)",
+      "--card-glow-strong": "rgba(120, 183, 255, 0.32)",
+      "--card-icon-bg": "rgba(47, 126, 237, 0.12)",
+      "--card-icon-bg-strong": "rgba(47, 126, 237, 0.2)",
+      "--card-panel": "rgba(246, 250, 255, 0.9)",
+      "--card-progress-bg": "rgba(96, 149, 215, 0.22)",
+      "--card-action-bg": "rgba(47, 126, 237, 0.08)",
+      "--card-action-bg-strong": "rgba(47, 126, 237, 0.18)",
+      "--surface-shadow": "0 14px 32px rgba(66, 121, 189, 0.14)",
+      "--card-hover-shadow":
+        "0 18px 34px rgba(52, 104, 179, 0.18), 0 0 22px rgba(126, 191, 255, 0.28)",
+      "--field-bg": "rgba(255, 255, 255, 0.92)",
+      "--field-bg-focus": "#ffffff",
+      "--field-ring": "rgba(47, 126, 237, 0.18)",
+      "--btn-primary-end": "#2d6ae7",
+      "--btn-primary-text": "#f8fbff",
+      "--btn-primary-shadow": "rgba(47, 126, 237, 0.28)",
+      "--btn-primary-shadow-hover": "rgba(47, 126, 237, 0.4)",
+      "--btn-ghost-bg": "rgba(47, 126, 237, 0.08)",
+      "--btn-ghost-border": "rgba(47, 126, 237, 0.24)",
+      "--btn-ghost-hover-bg": "rgba(47, 126, 237, 0.16)",
+      "--btn-ghost-hover-border": "rgba(47, 126, 237, 0.42)",
+    },
+  },
+  {
+    key: "mint",
+    label: "薄荷",
+    preview: "linear-gradient(135deg, #ffffff, #e7fff5)",
+    vars: {
+      "--page-bg-start": "#fcfffd",
+      "--page-bg-end": "#f2fdf7",
+      "--page-spot-1": "rgba(91, 201, 171, 0.2)",
+      "--page-spot-2": "rgba(124, 225, 198, 0.18)",
+      "--text": "#0f2f2a",
+      "--text-muted": "#5a7a74",
+      "--accent": "#1f9a7f",
+      "--accent-bright": "#137663",
+      "--accent-muted": "rgba(31, 154, 127, 0.14)",
+      "--panel-veil": "rgba(255, 255, 255, 0.88)",
+      "--panel-veil-strong": "rgba(255, 255, 255, 0.96)",
+      "--panel-border": "rgba(80, 168, 145, 0.28)",
+      "--panel-border-strong": "rgba(31, 134, 109, 0.55)",
+      "--hud-line-soft": "rgba(68, 165, 141, 0.45)",
+      "--card-surface-start": "#ffffff",
+      "--card-surface-end": "#f1fcf7",
+      "--card-border": "rgba(80, 168, 145, 0.24)",
+      "--card-border-strong": "rgba(31, 134, 109, 0.52)",
+      "--card-border-soft": "rgba(80, 168, 145, 0.14)",
+      "--card-glow": "rgba(123, 226, 198, 0.16)",
+      "--card-glow-strong": "rgba(96, 207, 177, 0.28)",
+      "--card-icon-bg": "rgba(31, 154, 127, 0.12)",
+      "--card-icon-bg-strong": "rgba(31, 154, 127, 0.22)",
+      "--card-panel": "rgba(245, 253, 249, 0.92)",
+      "--card-progress-bg": "rgba(80, 168, 145, 0.2)",
+      "--card-action-bg": "rgba(31, 154, 127, 0.08)",
+      "--card-action-bg-strong": "rgba(31, 154, 127, 0.18)",
+      "--surface-shadow": "0 14px 32px rgba(46, 132, 109, 0.14)",
+      "--card-hover-shadow":
+        "0 18px 34px rgba(37, 121, 99, 0.18), 0 0 22px rgba(132, 230, 205, 0.24)",
+      "--field-bg": "rgba(255, 255, 255, 0.92)",
+      "--field-bg-focus": "#ffffff",
+      "--field-ring": "rgba(31, 154, 127, 0.18)",
+      "--btn-primary-end": "#167a65",
+      "--btn-primary-text": "#f3fffb",
+      "--btn-primary-shadow": "rgba(31, 154, 127, 0.28)",
+      "--btn-primary-shadow-hover": "rgba(31, 154, 127, 0.4)",
+      "--btn-ghost-bg": "rgba(31, 154, 127, 0.08)",
+      "--btn-ghost-border": "rgba(31, 154, 127, 0.24)",
+      "--btn-ghost-hover-bg": "rgba(31, 154, 127, 0.16)",
+      "--btn-ghost-hover-border": "rgba(31, 154, 127, 0.42)",
+    },
+  },
+  {
+    key: "sunset",
+    label: "暖杏",
+    preview: "linear-gradient(135deg, #fffaf5, #ffe9d5)",
+    vars: {
+      "--page-bg-start": "#fffdfb",
+      "--page-bg-end": "#fff5ea",
+      "--page-spot-1": "rgba(255, 176, 108, 0.2)",
+      "--page-spot-2": "rgba(255, 206, 127, 0.18)",
+      "--text": "#42230f",
+      "--text-muted": "#8d6b57",
+      "--accent": "#ea7f38",
+      "--accent-bright": "#c15d1e",
+      "--accent-muted": "rgba(234, 127, 56, 0.15)",
+      "--panel-veil": "rgba(255, 250, 244, 0.9)",
+      "--panel-veil-strong": "rgba(255, 252, 248, 0.97)",
+      "--panel-border": "rgba(221, 149, 101, 0.3)",
+      "--panel-border-strong": "rgba(193, 101, 48, 0.54)",
+      "--hud-line-soft": "rgba(226, 142, 91, 0.46)",
+      "--card-surface-start": "#ffffff",
+      "--card-surface-end": "#fff4ea",
+      "--card-border": "rgba(221, 149, 101, 0.24)",
+      "--card-border-strong": "rgba(193, 101, 48, 0.5)",
+      "--card-border-soft": "rgba(221, 149, 101, 0.14)",
+      "--card-glow": "rgba(255, 191, 136, 0.18)",
+      "--card-glow-strong": "rgba(243, 165, 101, 0.3)",
+      "--card-icon-bg": "rgba(234, 127, 56, 0.12)",
+      "--card-icon-bg-strong": "rgba(234, 127, 56, 0.22)",
+      "--card-panel": "rgba(255, 248, 240, 0.9)",
+      "--card-progress-bg": "rgba(221, 149, 101, 0.2)",
+      "--card-action-bg": "rgba(234, 127, 56, 0.08)",
+      "--card-action-bg-strong": "rgba(234, 127, 56, 0.18)",
+      "--surface-shadow": "0 14px 32px rgba(178, 116, 71, 0.15)",
+      "--card-hover-shadow":
+        "0 18px 34px rgba(167, 101, 54, 0.18), 0 0 22px rgba(255, 199, 143, 0.28)",
+      "--field-bg": "rgba(255, 255, 255, 0.92)",
+      "--field-bg-focus": "#ffffff",
+      "--field-ring": "rgba(234, 127, 56, 0.18)",
+      "--btn-primary-end": "#c05a1f",
+      "--btn-primary-text": "#fff7f1",
+      "--btn-primary-shadow": "rgba(234, 127, 56, 0.28)",
+      "--btn-primary-shadow-hover": "rgba(234, 127, 56, 0.4)",
+      "--btn-ghost-bg": "rgba(234, 127, 56, 0.08)",
+      "--btn-ghost-border": "rgba(234, 127, 56, 0.24)",
+      "--btn-ghost-hover-bg": "rgba(234, 127, 56, 0.16)",
+      "--btn-ghost-hover-border": "rgba(234, 127, 56, 0.42)",
+    },
+  },
+  {
+    key: "ocean",
+    label: "晴海",
+    preview: "linear-gradient(135deg, #f7fcff, #def6ff)",
+    vars: {
+      "--page-bg-start": "#fbfeff",
+      "--page-bg-end": "#eef9ff",
+      "--page-spot-1": "rgba(106, 185, 229, 0.2)",
+      "--page-spot-2": "rgba(120, 211, 240, 0.18)",
+      "--text": "#0f2c40",
+      "--text-muted": "#5f7d90",
+      "--accent": "#237fb7",
+      "--accent-bright": "#186492",
+      "--accent-muted": "rgba(35, 127, 183, 0.14)",
+      "--panel-veil": "rgba(255, 255, 255, 0.88)",
+      "--panel-veil-strong": "rgba(255, 255, 255, 0.96)",
+      "--panel-border": "rgba(89, 160, 203, 0.28)",
+      "--panel-border-strong": "rgba(35, 119, 167, 0.55)",
+      "--hud-line-soft": "rgba(88, 160, 205, 0.45)",
+      "--card-surface-start": "#ffffff",
+      "--card-surface-end": "#f1f9ff",
+      "--card-border": "rgba(89, 160, 203, 0.24)",
+      "--card-border-strong": "rgba(35, 119, 167, 0.52)",
+      "--card-border-soft": "rgba(89, 160, 203, 0.14)",
+      "--card-glow": "rgba(135, 212, 240, 0.17)",
+      "--card-glow-strong": "rgba(102, 187, 221, 0.28)",
+      "--card-icon-bg": "rgba(35, 127, 183, 0.12)",
+      "--card-icon-bg-strong": "rgba(35, 127, 183, 0.22)",
+      "--card-panel": "rgba(244, 251, 255, 0.92)",
+      "--card-progress-bg": "rgba(89, 160, 203, 0.2)",
+      "--card-action-bg": "rgba(35, 127, 183, 0.08)",
+      "--card-action-bg-strong": "rgba(35, 127, 183, 0.18)",
+      "--surface-shadow": "0 14px 32px rgba(55, 123, 162, 0.14)",
+      "--card-hover-shadow":
+        "0 18px 34px rgba(44, 108, 145, 0.18), 0 0 22px rgba(144, 220, 247, 0.26)",
+      "--field-bg": "rgba(255, 255, 255, 0.92)",
+      "--field-bg-focus": "#ffffff",
+      "--field-ring": "rgba(35, 127, 183, 0.18)",
+      "--btn-primary-end": "#1a6797",
+      "--btn-primary-text": "#f2fbff",
+      "--btn-primary-shadow": "rgba(35, 127, 183, 0.28)",
+      "--btn-primary-shadow-hover": "rgba(35, 127, 183, 0.4)",
+      "--btn-ghost-bg": "rgba(35, 127, 183, 0.08)",
+      "--btn-ghost-border": "rgba(35, 127, 183, 0.24)",
+      "--btn-ghost-hover-bg": "rgba(35, 127, 183, 0.16)",
+      "--btn-ghost-hover-border": "rgba(35, 127, 183, 0.42)",
+    },
+  },
+];
 
 const router = useRouter();
 const projectStore = useProjectStore();
@@ -174,10 +406,48 @@ const toastStore = useToastStore();
 const showCreate = ref(false);
 const searchQuery = ref("");
 const sortKey = ref("name");
+const selectedTheme = ref(projectThemes[0].key);
 const sortStorageKey = "ainovel:project-sort";
+const themeStorageKey = "ainovel:project-theme";
+
+const getSafeStorage = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const storage = window.localStorage;
+  if (!storage || typeof storage.getItem !== "function" || typeof storage.setItem !== "function") {
+    return null;
+  }
+  return storage;
+};
+
+const readStorageItem = (key: string) => {
+  const storage = getSafeStorage();
+  if (!storage) {
+    return null;
+  }
+  return storage.getItem(key);
+};
+
+const writeStorageItem = (key: string, value: string) => {
+  const storage = getSafeStorage();
+  if (!storage) {
+    return;
+  }
+  storage.setItem(key, value);
+};
+
+const currentTheme = computed(
+  () => projectThemes.find((theme) => theme.key === selectedTheme.value) ?? projectThemes[0]
+);
+const pageStyleVars = computed(() => currentTheme.value.vars);
 
 const refresh = () => {
   projectStore.fetchProjects();
+};
+
+const chooseTheme = (themeKey: string) => {
+  selectedTheme.value = themeKey;
 };
 
 const openProject = (projectId: string) => {
@@ -212,11 +482,13 @@ const createProject = async (payload: Record<string, string>) => {
 
 onMounted(() => {
   projectStore.fetchProjects();
-  if (typeof window !== "undefined") {
-    const saved = window.localStorage.getItem(sortStorageKey);
-    if (saved) {
-      sortKey.value = saved;
-    }
+  const saved = readStorageItem(sortStorageKey);
+  if (saved) {
+    sortKey.value = saved;
+  }
+  const savedTheme = readStorageItem(themeStorageKey);
+  if (savedTheme && projectThemes.some((theme) => theme.key === savedTheme)) {
+    selectedTheme.value = savedTheme;
   }
 });
 
@@ -252,9 +524,14 @@ const visibleProjects = computed(() => {
 watch(
   () => sortKey.value,
   (value) => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(sortStorageKey, value);
-    }
+    writeStorageItem(sortStorageKey, value);
+  }
+);
+
+watch(
+  () => selectedTheme.value,
+  (value) => {
+    writeStorageItem(themeStorageKey, value);
   }
 );
 
@@ -271,26 +548,45 @@ watch(
 
 <style scoped>
 .project-view {
-  --accent: #2f9bff;
-  --accent-bright: #7dd3ff;
-  --accent-muted: rgba(47, 155, 255, 0.18);
-  --panel-veil: rgba(8, 12, 18, 0.72);
-  --panel-veil-strong: rgba(8, 12, 18, 0.84);
-  --panel-border: rgba(95, 170, 230, 0.28);
-  --panel-border-strong: rgba(95, 170, 230, 0.5);
-  --card-surface-start: rgba(9, 14, 22, 0.96);
-  --card-surface-end: rgba(6, 10, 16, 0.98);
-  --card-border: rgba(95, 170, 230, 0.28);
-  --card-border-strong: rgba(95, 170, 230, 0.5);
-  --card-border-soft: rgba(95, 170, 230, 0.12);
-  --card-glow: rgba(90, 170, 240, 0.12);
-  --card-glow-strong: rgba(90, 170, 240, 0.24);
-  --card-icon-bg: rgba(47, 155, 255, 0.12);
-  --card-icon-bg-strong: rgba(47, 155, 255, 0.22);
-  --card-panel: rgba(8, 12, 18, 0.55);
-  --card-progress-bg: rgba(90, 170, 240, 0.18);
-  --card-action-bg: rgba(47, 155, 255, 0.08);
-  --card-action-bg-strong: rgba(47, 155, 255, 0.2);
+  --page-bg-start: #ffffff;
+  --page-bg-end: #f8fbff;
+  --page-spot-1: rgba(124, 181, 255, 0.18);
+  --page-spot-2: rgba(127, 225, 255, 0.16);
+  --text: #10223d;
+  --text-muted: #5f7088;
+  --accent: #2f7eed;
+  --accent-bright: #1b65d0;
+  --accent-muted: rgba(47, 126, 237, 0.14);
+  --panel-veil: rgba(255, 255, 255, 0.88);
+  --panel-veil-strong: rgba(255, 255, 255, 0.96);
+  --panel-border: rgba(95, 148, 214, 0.26);
+  --panel-border-strong: rgba(54, 116, 197, 0.55);
+  --hud-line-soft: rgba(83, 146, 224, 0.45);
+  --card-surface-start: #ffffff;
+  --card-surface-end: #f6faff;
+  --card-border: rgba(96, 149, 215, 0.24);
+  --card-border-strong: rgba(62, 125, 201, 0.52);
+  --card-border-soft: rgba(96, 149, 215, 0.14);
+  --card-glow: rgba(120, 183, 255, 0.18);
+  --card-glow-strong: rgba(120, 183, 255, 0.32);
+  --card-icon-bg: rgba(47, 126, 237, 0.12);
+  --card-icon-bg-strong: rgba(47, 126, 237, 0.2);
+  --card-panel: rgba(246, 250, 255, 0.9);
+  --card-progress-bg: rgba(96, 149, 215, 0.22);
+  --card-action-bg: rgba(47, 126, 237, 0.08);
+  --card-action-bg-strong: rgba(47, 126, 237, 0.18);
+  --surface-shadow: 0 14px 32px rgba(66, 121, 189, 0.14);
+  --field-bg: rgba(255, 255, 255, 0.92);
+  --field-bg-focus: #ffffff;
+  --field-ring: rgba(47, 126, 237, 0.18);
+  --btn-primary-end: #2d6ae7;
+  --btn-primary-text: #f8fbff;
+  --btn-primary-shadow: rgba(47, 126, 237, 0.28);
+  --btn-primary-shadow-hover: rgba(47, 126, 237, 0.4);
+  --btn-ghost-bg: rgba(47, 126, 237, 0.08);
+  --btn-ghost-border: rgba(47, 126, 237, 0.24);
+  --btn-ghost-hover-bg: rgba(47, 126, 237, 0.16);
+  --btn-ghost-hover-border: rgba(47, 126, 237, 0.42);
   padding: 48px clamp(24px, 6vw, 80px);
   display: flex;
   flex-direction: column;
@@ -298,6 +594,11 @@ watch(
   position: relative;
   min-height: 100vh;
   z-index: 1;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 12% 5%, var(--page-spot-1), transparent 44%),
+    radial-gradient(circle at 92% 90%, var(--page-spot-2), transparent 46%),
+    linear-gradient(180deg, var(--page-bg-start) 0%, var(--page-bg-end) 100%);
 }
 
 @keyframes float {
@@ -377,7 +678,7 @@ watch(
   border-radius: var(--radius-lg);
   backdrop-filter: blur(10px);
   position: relative;
-  box-shadow: 0 18px 40px rgba(5, 9, 15, 0.55);
+  box-shadow: var(--surface-shadow);
 }
 
 .controls-section::before {
@@ -417,7 +718,7 @@ watch(
   padding: 14px 44px;
   border-radius: var(--radius-md);
   border: 1px solid var(--panel-border);
-  background: rgba(8, 12, 18, 0.65);
+  background: var(--field-bg);
   color: var(--text);
   font-size: 15px;
   transition: all 0.3s ease;
@@ -430,8 +731,8 @@ watch(
 .search-input:focus {
   outline: none;
   border-color: var(--panel-border-strong);
-  background: rgba(6, 10, 16, 0.85);
-  box-shadow: 0 0 0 4px rgba(47, 155, 255, 0.15);
+  background: var(--field-bg-focus);
+  box-shadow: 0 0 0 4px var(--field-ring);
 }
 
 .search-clear {
@@ -459,6 +760,11 @@ watch(
   min-width: 160px;
 }
 
+.theme-wrapper {
+  min-width: 260px;
+  flex: 1 1 260px;
+}
+
 .sort-field {
   display: flex;
   flex-direction: column;
@@ -480,7 +786,7 @@ watch(
   padding: 12px 36px 12px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--panel-border);
-  background: rgba(8, 12, 18, 0.65) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b7c7e6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 12px center;
+  background: var(--field-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7f98' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 12px center;
   color: var(--text);
   font-size: 14px;
   cursor: pointer;
@@ -491,7 +797,55 @@ watch(
 .sort-select:focus {
   outline: none;
   border-color: var(--panel-border-strong);
-  background-color: rgba(6, 10, 16, 0.85);
+  background-color: var(--field-bg-focus);
+}
+
+.theme-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.theme-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--field-bg);
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.theme-option:hover {
+  color: var(--text);
+  border-color: var(--panel-border-strong);
+}
+
+.theme-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--field-ring);
+}
+
+.theme-option.active {
+  color: var(--accent-bright);
+  border-color: var(--panel-border-strong);
+  background: var(--accent-muted);
+}
+
+.theme-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: inset 0 0 0 1px rgba(10, 20, 35, 0.1);
+}
+
+.theme-name {
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .results-count {
@@ -499,7 +853,7 @@ watch(
   align-items: baseline;
   gap: 6px;
   padding-left: 16px;
-  border-left: 1px solid rgba(95, 170, 230, 0.2);
+  border-left: 1px solid var(--panel-border);
   margin-left: auto;
 }
 
@@ -681,14 +1035,14 @@ watch(
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), #2f6bff);
-  color: #f2edff;
-  box-shadow: 0 8px 20px rgba(47, 155, 255, 0.28);
+  background: linear-gradient(135deg, var(--accent), var(--btn-primary-end));
+  color: var(--btn-primary-text);
+  box-shadow: 0 8px 20px var(--btn-primary-shadow);
 }
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 12px 30px rgba(47, 155, 255, 0.4);
+  box-shadow: 0 12px 30px var(--btn-primary-shadow-hover);
 }
 
 .btn-large {
@@ -697,14 +1051,14 @@ watch(
 }
 
 .btn-ghost {
-  background: rgba(47, 155, 255, 0.08);
-  border: 1px solid rgba(47, 155, 255, 0.25);
+  background: var(--btn-ghost-bg);
+  border: 1px solid var(--btn-ghost-border);
   color: var(--text);
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background: rgba(47, 155, 255, 0.18);
-  border-color: rgba(47, 155, 255, 0.45);
+  background: var(--btn-ghost-hover-bg);
+  border-color: var(--btn-ghost-hover-border);
 }
 
 .btn-icon {
@@ -782,12 +1136,17 @@ watch(
     max-width: none;
   }
 
+  .sort-wrapper,
+  .theme-wrapper {
+    min-width: 0;
+  }
+
   .results-count {
     margin-left: 0;
     padding-left: 0;
     border-left: none;
     padding-top: 16px;
-    border-top: 1px solid rgba(95, 170, 230, 0.18);
+    border-top: 1px solid var(--panel-border);
     width: 100%;
     justify-content: center;
   }

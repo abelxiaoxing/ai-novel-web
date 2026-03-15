@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# 兼容通过 zsh/bash 直接执行脚本，不依赖 BASH_SOURCE。
+SCRIPT_PATH="$0"
+if command -v realpath >/dev/null 2>&1; then
+  SCRIPT_PATH="$(realpath "${SCRIPT_PATH}")"
+fi
+ROOT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 API_PORT="${API_PORT:-8000}"
 WEB_PORT="${WEB_PORT:-5173}"
 VITE_API_BASE="${VITE_API_BASE:-http://localhost:${API_PORT}}"
+# 默认放到用户缓存目录，避免在仓库内生成未跟踪缓存文件。
+UV_CACHE_DIR="${UV_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/uv}"
+export UV_CACHE_DIR
 
 cd "${ROOT_DIR}"
 
